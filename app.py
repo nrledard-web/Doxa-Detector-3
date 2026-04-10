@@ -1422,13 +1422,30 @@ st.caption(
     f"{T['manual_paste'] if st.session_state.get('article_source') == 'paste' else T['loaded_url_source']}"
 )
 
+if "last_result" not in st.session_state:
+    st.session_state.last_result = None
 
+if "last_article" not in st.session_state:
+    st.session_state.last_article = ""
+
+if "ai_summary" not in st.session_state:
+    st.session_state.ai_summary = ""
 
 # -----------------------------
 # Main analysis
 # -----------------------------
+# -----------------------------
+# Main analysis
+# -----------------------------
 if analyze_submitted:
-    result = analyze_article(article)
+    st.session_state.last_result = analyze_article(article)
+    st.session_state.last_article = article
+    st.session_state.ai_summary = ""
+
+result = st.session_state.last_result
+article_for_analysis = st.session_state.last_article
+
+if result:
 
     col1, col2, col3 = st.columns(3)
     col1.metric(T["classic_score"], result["M"], help=T["help_classic_score"])

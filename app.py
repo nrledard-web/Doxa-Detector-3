@@ -44,6 +44,7 @@ from newspaper import Article
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 from mpl_toolkits.mplot3d import Axes3D
+from streamlit_mic_recorder import speech_to_text
 def plot_cognitive_triangle_3d(G: float, N: float, D: float):
     """
     Triangle cognitif 3D

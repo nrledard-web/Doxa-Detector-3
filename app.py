@@ -1415,11 +1415,11 @@ if analyze_submitted:
     st.subheader("Triangle cognitif G-N-D")
     st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")
 
-    fig_triangle = plot_cognitive_triangle(
-        result["G"],
-        result["N"],
-        result["D"]
-    )
+    fig_triangle = plot_cognitive_triangle_3d(
+    result["G"],
+    result["N"],
+    result["D"]
+)
     st.pyplot(fig_triangle, use_container_width=True)
 
     with st.expander(T["strengths_detected"], expanded=True):

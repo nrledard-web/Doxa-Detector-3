@@ -137,13 +137,6 @@ except Exception:
     import io
 import streamlit as st
 
-try:
-    from streamlit_mic_recorder import mic_recorder
-    MIC_AVAILABLE = True
-except Exception:
-    MIC_AVAILABLE = False
-
-
 def transcribe_audio_with_openai(audio_bytes: bytes, filename: str = "audio.webm") -> str:
     if client is None:
         return ""

@@ -1544,26 +1544,6 @@ if analyze_submitted:
     if not claims_df.empty:
         st.dataframe(claims_df, use_container_width=True, hide_index=True)
         if client is not None:
-            st.subheader(T["ai_claim_explanations"])
-            for idx, c in enumerate(result["claims"][:5], start=1):
-                preview = c.text[:120] + ("..." if len(c.text) > 120 else "")
-                with st.expander(f"{idx}. {preview}", expanded=False):
-                    if st.button(f"{T['ai_explain_claim']} #{idx}", key=f"explain_claim_{idx}"):
-                        claim_data = {
-                            "status": c.status,
-                            "verifiability": c.verifiability,
-                            "risk": c.risk,
-                            "has_number": c.has_number,
-                            "has_date": c.has_date,
-                            "has_named_entity": c.has_named_entity,
-                            "has_source_cue": c.has_source_cue,
-                            "absolutism": c.absolutism,
-                            "emotional_charge": c.emotional_charge,
-                        }
-                        with st.spinner("AI is analyzing the claim..."):
-                            explanation = explain_claim_with_ai(lang, c.text, claim_data)
-                        st.markdown(f"**{T['ai_explanation']} :**")
-                        st.markdown(explanation)
     else:
         st.info(T["paste_longer_text"])
 

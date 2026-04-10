@@ -1556,3 +1556,150 @@ if show_method:
         f"- **{T['cognitive_closure']}** : `(D * S) / (G + N)`\n\n"
         f"{T['disclaimer']}"
     )
+# -----------------------------
+# Laboratoire interactif de la mécroyance
+# -----------------------------
+st.divider()
+st.subheader("Laboratoire interactif de la mécroyance")
+st.caption(
+    "Expérimentez la formule cognitive : M = (G + N) − D. "
+    "Modifiez les paramètres pour observer l’évolution des stades cognitifs."
+)
+
+# Curseurs
+g_game = st.slider("G — gnōsis (savoir articulé)", 0.0, 10.0, 5.0, 0.5)
+n_game = st.slider("N — nous (intégration vécue)", 0.0, 10.0, 5.0, 0.5)
+d_game = st.slider("D — doxa (certitude / saturation)", 0.0, 10.0, 5.0, 0.5)
+
+# Calcul
+m_game = round((g_game + n_game) - d_game, 1)
+
+# Affichage formule
+st.markdown(
+    f"""
+    <div style="
+        background:#f1f5f9;
+        border-radius:14px;
+        padding:18px;
+        margin-top:10px;
+        border:1px solid #dbe3ec;
+        text-align:center;
+        font-size:1.3rem;
+        font-weight:700;
+    ">
+        M = ({g_game:.1f} + {n_game:.1f}) − {d_game:.1f} = 
+        <span style="color:#0b6e4f;">{m_game:.1f}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# Détermination du stade
+if m_game < 0:
+    stage = "Fermeture cognitive"
+    color = "#d62828"
+    explanation = "La certitude dépasse la compréhension : la pensée se verrouille."
+    percent = 10
+
+elif m_game <= 4:
+    stage = "Enfance cognitive"
+    color = "#f77f00"
+    explanation = "Structure cognitive naissante, encore fragile."
+    percent = 25
+
+elif m_game <= 10:
+    stage = "Adolescence cognitive"
+    color = "#fcbf49"
+    explanation = "Cognition stable mais encore agitée."
+    percent = 50
+
+elif m_game <= 17:
+    stage = "Maturité cognitive"
+    color = "#7cb518"
+    explanation = "Équilibre entre savoir, expérience et doute."
+    percent = 75
+
+elif m_game < 19:
+    stage = "Sagesse structurelle"
+    color = "#2a9d8f"
+    explanation = "État rare d’équilibre cognitif."
+    percent = 90
+
+else:
+    stage = "Asymptote de vérité"
+    color = "#1d3557"
+    explanation = "Horizon théorique de cohérence maximale."
+    percent = 100
+
+
+# Barre de progression colorée
+st.markdown(
+    f"""
+    <div style="margin-top:20px;">
+        <div style="font-weight:700;margin-bottom:6px;">{stage}</div>
+
+        <div style="
+            background:#dee2e6;
+            border-radius:12px;
+            height:30px;
+            overflow:hidden;
+        ">
+            <div style="
+                width:{percent}%;
+                background:{color};
+                height:30px;
+                text-align:center;
+                color:white;
+                font-weight:700;
+                line-height:30px;
+            ">
+                M = {m_game}
+            </div>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+st.caption(explanation)
+
+# Frise cognitive
+st.markdown("### Évolution cognitive")
+
+stages = [
+    ("Fermeture", -10, 0, "#d62828"),
+    ("Enfance", 0, 4.1, "#f77f00"),
+    ("Adolescence", 4.1, 10.1, "#fcbf49"),
+    ("Maturité", 10.1, 17.1, "#7cb518"),
+    ("Sagesse", 17.1, 19.1, "#2a9d8f"),
+    ("Asymptote", 19.1, 21, "#1d3557"),
+]
+
+cols = st.columns(len(stages))
+
+for i, (name, low, high, stage_color) in enumerate(stages):
+    active = low <= m_game < high
+
+    with cols[i]:
+        bg = stage_color if active else "#e5e7eb"
+        txt = "white" if active else "#374151"
+
+        st.markdown(
+            f"""
+            <div style="
+                background:{bg};
+                color:{txt};
+                border-radius:12px;
+                padding:12px;
+                text-align:center;
+                font-weight:bold;
+            ">
+            {name}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+st.caption(
+    "Lorsque G et N augmentent sans inflation de D, la cognition gagne en revisabilité."
+)

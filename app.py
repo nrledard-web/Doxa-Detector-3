@@ -113,6 +113,14 @@ def get_openai_client() -> Optional["OpenAI"]:
 
 client = get_openai_client()
 
+# TEST IA
+if client is not None:
+    if st.button("TEST IA"):
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input="Dis simplement bonjour."
+        )
+        st.write(response.output[0].content[0].text)
 
 # -----------------------------
 # Translations

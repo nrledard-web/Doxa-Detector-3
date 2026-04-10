@@ -1384,7 +1384,7 @@ if analyze_submitted:
     st.subheader("Triangle cognitif G-N-D")
     st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")
     
-    def plot_cognitive_triangle_3d(G: float, N: float, D: float):
+def plot_cognitive_triangle_3d(G: float, N: float, D: float):
     """
     Représentation 3D simple du triangle cognitif.
     Axe X = G (gnōsis)

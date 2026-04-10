@@ -1,10 +1,36 @@
+# -----------------------------
+# Bannière professionnelle
+# -----------------------------
 import streamlit as st
 
-st.set_page_config(
-    page_title="Mécroyance Lab — Fact-checking",
-    page_icon="🧠",
-    layout="wide",
+st.markdown(
+    """
+    <style>
+    .banner-container {
+        width: 100%;
+        padding: 10px 0px 25px 0px;
+        display: flex;
+        justify-content: center;
+    }
+    .banner-container img {
+        width: 100%;
+        max-width: 1100px;
+        border-radius: 14px;
+        box-shadow: 0px 8px 30px rgba(0,0,0,0.35);
+    }
+    </style>
+
+    <div class="banner-container">
+        <img src="banner2.png">
+    </div>
+    """,
+    unsafe_allow_html=True
 )
+
+st.title("DOXA DETECTOR")
+st.caption("Laboratoire de calibration cognitive — M = (G + N) − D")
+
+st.markdown("---")
 
 import json
 import re
@@ -12,38 +38,167 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 import pandas as pd
+import streamlit as st
 from ddgs import DDGS
 from newspaper import Article
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 from mpl_toolkits.mplot3d import Axes3D
+from streamlit_mic_recorder import speech_to_text
+def plot_cognitive_triangle_3d(G: float, N: float, D: float):
+    """
+    Triangle cognitif 3D
+    G = gnōsis (savoir articulé)
+    N = nous (compréhension intégrée)
+    D = doxa (certitude assertive)
 
-# -----------------------------
-# Import micro sécurisé
-# -----------------------------
-try:
-    from streamlit_mic_recorder import speech_to_text
-    MICRO_AVAILABLE = True
-except Exception:
-    speech_to_text = None
-    MICRO_AVAILABLE = False
+    Les valeurs sont attendues entre 0 et 10.
+    """
 
-# -----------------------------
-# Import OpenAI sécurisé
-# -----------------------------
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    # Points de base du triangle
+    G_pt = [10, 0, 0]
+    N_pt = [0, 10, 0]
+    D_pt = [0, 0, 10]
+
+    # Point analysé
+    P = [G, N, D]
+
+    fig = plt.figure(figsize=(8, 7))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Triangle principal
+    verts = [[G_pt, N_pt, D_pt]]
+    tri = Poly3DCollection(verts, alpha=0.18, edgecolor="black", linewidths=1.5)
+    ax.add_collection3d(tri)
+
+    # Arêtes du triangle
+    ax.plot(
+        [G_pt[0], N_pt[0]], [G_pt[1], N_pt[1]], [G_pt[2], N_pt[2]],
+        linewidth=2
+    )
+    ax.plot(
+        [N_pt[0], D_pt[0]], [N_pt[1], D_pt[1]], [N_pt[2], D_pt[2]],
+        linewidth=2
+    )
+    ax.plot(
+        [D_pt[0], G_pt[0]], [D_pt[1], G_pt[1]], [D_pt[2], G_pt[2]],
+        linewidth=2
+    )
+
+    # Sommets
+    ax.scatter(*G_pt, s=80)
+    ax.scatter(*N_pt, s=80)
+    ax.scatter(*D_pt, s=80)
+
+    ax.text(G_pt[0] + 0.3, G_pt[1], G_pt[2], "G", fontsize=12, weight="bold")
+    ax.text(N_pt[0], N_pt[1] + 0.3, N_pt[2], "N", fontsize=12, weight="bold")
+    ax.text(D_pt[0], D_pt[1], D_pt[2] + 0.3, "D", fontsize=12, weight="bold")
+
+    # Point du texte analysé
+    ax.scatter(*P, s=140, marker="o")
+    ax.text(P[0] + 0.2, P[1] + 0.2, P[2] + 0.2, "Texte", fontsize=11, weight="bold")
+
+    # Projection discrète sur les axes
+    ax.plot([0, G], [0, 0], [0, 0], linestyle="--", linewidth=1)
+    ax.plot([0, 0], [0, N], [0, 0], linestyle="--", linewidth=1)
+    ax.plot([0, 0], [0, 0], [0, D], linestyle="--", linewidth=1)
+
+    # Segment origine -> point
+    ax.plot([0, G], [0, N], [0, D], linestyle=":", linewidth=1.5)
+
+    # Limites et labels
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+    ax.set_zlim(0, 10)
+
+    ax.set_xlabel("G — gnōsis")
+    ax.set_ylabel("N — nous")
+    ax.set_zlabel("D — doxa")
+
+    ax.set_title("Triangle cognitif 3D")
+
+    # Angle de vue
+    ax.view_init(elev=24, azim=35)
+
+    return fig
+
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
+    import io
+import streamlit as st
+
+try:
+    from streamlit_mic_recorder import mic_recorder
+    MIC_AVAILABLE = True
+except Exception:
+    MIC_AVAILABLE = False
+
+
+def transcribe_audio_with_openai(audio_bytes: bytes, filename: str = "audio.webm") -> str:
+    if client is None:
+        return ""
+
+    try:
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = filename  # important pour l'API
+        transcript = client.audio.transcriptions.create(
+            model="gpt-4o-mini-transcribe",
+            file=audio_file
+        )
+        return transcript.text.strip()
+    except Exception as e:
+        st.error(f"Erreur transcription : {e}")
+        return ""
+
 
 # -----------------------------
-# Bannière professionnelle
+# Microphone
 # -----------------------------
-st.image("banner2.png", use_container_width=True)
+st.markdown("### 🎙️ Dictée vocale")
+st.caption("Enregistrez votre voix, puis le texte sera injecté dans la zone d’analyse.")
 
-st.title("DOXA DETECTOR")
-st.caption("Laboratoire de calibration cognitive — M = (G + N) − D")
-st.markdown("---")
+if MIC_AVAILABLE:
+    audio = mic_recorder(
+        start_prompt="🎙️ Commencer l’enregistrement",
+        stop_prompt="⏹️ Arrêter l’enregistrement",
+        just_once=True,
+        use_container_width=True,
+        format="webm",
+        key="my_mic"
+    )
+
+    if audio and isinstance(audio, dict) and audio.get("bytes"):
+        st.audio(audio["bytes"])
+        with st.spinner("Transcription en cours..."):
+            transcript = transcribe_audio_with_openai(
+                audio["bytes"],
+                filename=f"recording.{audio.get('format', 'webm')}"
+            )
+        if transcript:
+            st.session_state.article = transcript
+            st.session_state.article_source = "paste"
+            st.success("Texte dicté reçu.")
+else:
+    st.info("Microphone indisponible sur cette version.")
+try:
+    from streamlit_mic_recorder import speech_to_text
+    MICRO_AVAILABLE = True
+except Exception:
+    MICRO_AVAILABLE = False
+
+# -----------------------------
+# Page setup
+# -----------------------------
+st.set_page_config(
+    page_title="Mécroyance Lab — Fact-checking",
+    page_icon="🧠",
+    layout="wide",
+)
 
 
 # -----------------------------
@@ -1277,42 +1432,13 @@ if load_url_submitted:
 
 
 # -----------------------------
-# Micro juste au-dessus de la zone de texte
-# -----------------------------
-st.subheader("🎙️ Dictée vocale")
-
-if MICRO_AVAILABLE:
-    spoken_text = speech_to_text(
-        language="fr",
-        start_prompt="🎤 Parler",
-        stop_prompt="⏹️ Stop",
-        just_once=True,
-        use_container_width=True,
-        key="mic_main"
-    )
-
-    if spoken_text:
-        st.session_state.article = spoken_text
-        st.session_state.article_source = "paste"
-        st.success("Texte dicté ajouté.")
-else:
-    st.warning("Micro indisponible : module streamlit-mic-recorder non installé.")
-
-# -----------------------------
 # Main article form
 # -----------------------------
 previous_article = st.session_state.article
-
 with st.form("article_form"):
-    article = st.text_area(
-        T["paste"],
-        value=st.session_state.article,
-        height=220
-    )
-    analyze_submitted = st.form_submit_button(
-        T["analyze"],
-        use_container_width=True
-    )
+    article = st.text_area(T["paste"], value=st.session_state.article, height=220)
+    analyze_submitted = st.form_submit_button(T["analyze"], use_container_width=True)
+
 if article.strip() != previous_article.strip():
     st.session_state.article_source = "paste"
 st.session_state.article = article
@@ -1383,56 +1509,6 @@ if analyze_submitted:
     st.divider()
     st.subheader("Triangle cognitif G-N-D")
     st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")
-    def plot_cognitive_triangle_3d(G: float, N: float, D: float):
-    """
-    Représentation 3D simple du triangle cognitif.
-    Axe X = G (gnōsis)
-    Axe Y = N (nous)
-    Axe Z = D (doxa)
-    """
-    fig = plt.figure(figsize=(7, 6))
-    ax = fig.add_subplot(111, projection="3d")
-
-    # Points de base
-    origin = (0, 0, 0)
-    g_pt = (G, 0, 0)
-    n_pt = (0, N, 0)
-    d_pt = (0, 0, D)
-
-    # Triangle cognitif
-    xs = [g_pt[0], n_pt[0], d_pt[0]]
-    ys = [g_pt[1], n_pt[1], d_pt[1]]
-    zs = [g_pt[2], n_pt[2], d_pt[2]]
-
-    # Arêtes du triangle
-    ax.plot([g_pt[0], n_pt[0]], [g_pt[1], n_pt[1]], [g_pt[2], n_pt[2]], linewidth=2)
-    ax.plot([n_pt[0], d_pt[0]], [n_pt[1], d_pt[1]], [n_pt[2], d_pt[2]], linewidth=2)
-    ax.plot([d_pt[0], g_pt[0]], [d_pt[1], g_pt[1]], [d_pt[2], g_pt[2]], linewidth=2)
-
-    # Lignes depuis l’origine
-    ax.plot([0, g_pt[0]], [0, g_pt[1]], [0, g_pt[2]], linestyle="dashed", alpha=0.6)
-    ax.plot([0, n_pt[0]], [0, n_pt[1]], [0, n_pt[2]], linestyle="dashed", alpha=0.6)
-    ax.plot([0, d_pt[0]], [0, d_pt[1]], [0, d_pt[2]], linestyle="dashed", alpha=0.6)
-
-    # Points
-    ax.scatter(G, 0, 0, s=80, label="G — gnōsis")
-    ax.scatter(0, N, 0, s=80, label="N — nous")
-    ax.scatter(0, 0, D, s=80, label="D — doxa")
-
-    # Centre approximatif du profil
-    ax.scatter(G / 3, N / 3, D / 3, s=120, marker="^", label="Profil cognitif")
-
-    # Labels
-    ax.set_xlabel("G — gnōsis")
-    ax.set_ylabel("N — nous")
-    ax.set_zlabel("D — doxa")
-    ax.set_title("Triangle cognitif 3D")
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 10)
-    ax.set_zlim(0, 10)
-    ax.legend()
-
-    return fig
 
     fig_triangle = plot_cognitive_triangle_3d(
     result["G"],

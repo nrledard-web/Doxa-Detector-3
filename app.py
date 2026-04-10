@@ -6,6 +6,36 @@ st.set_page_config(
     layout="wide",
 )
 
+import json
+import re
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+
+import pandas as pd
+from ddgs import DDGS
+from newspaper import Article
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
+from mpl_toolkits.mplot3d import Axes3D
+
+# -----------------------------
+# Import micro sécurisé
+# -----------------------------
+try:
+    from streamlit_mic_recorder import speech_to_text
+    MICRO_AVAILABLE = True
+except Exception:
+    speech_to_text = None
+    MICRO_AVAILABLE = False
+
+# -----------------------------
+# Import OpenAI sécurisé
+# -----------------------------
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
+
 # -----------------------------
 # Bannière professionnelle
 # -----------------------------
@@ -13,121 +43,7 @@ st.image("banner2.png", use_container_width=True)
 
 st.title("DOXA DETECTOR")
 st.caption("Laboratoire de calibration cognitive — M = (G + N) − D")
-
 st.markdown("---")
-
-import json
-import re
-from dataclasses import dataclass
-from typing import Dict, List, Optional
-
-import pandas as pd
-import streamlit as st
-from ddgs import DDGS
-from newspaper import Article
-import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
-from mpl_toolkits.mplot3d import Axes3D
-from streamlit_mic_recorder import speech_to_text
-def plot_cognitive_triangle_3d(G: float, N: float, D: float):
-    """
-    Triangle cognitif 3D
-    G = gnōsis (savoir articulé)
-    N = nous (compréhension intégrée)
-    D = doxa (certitude assertive)
-
-    Les valeurs sont attendues entre 0 et 10.
-    """
-
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
-    # Points de base du triangle
-    G_pt = [10, 0, 0]
-    N_pt = [0, 10, 0]
-    D_pt = [0, 0, 10]
-
-    # Point analysé
-    P = [G, N, D]
-
-    fig = plt.figure(figsize=(8, 7))
-    ax = fig.add_subplot(111, projection="3d")
-
-    # Triangle principal
-    verts = [[G_pt, N_pt, D_pt]]
-    tri = Poly3DCollection(verts, alpha=0.18, edgecolor="black", linewidths=1.5)
-    ax.add_collection3d(tri)
-
-    # Arêtes du triangle
-    ax.plot(
-        [G_pt[0], N_pt[0]], [G_pt[1], N_pt[1]], [G_pt[2], N_pt[2]],
-        linewidth=2
-    )
-    ax.plot(
-        [N_pt[0], D_pt[0]], [N_pt[1], D_pt[1]], [N_pt[2], D_pt[2]],
-        linewidth=2
-    )
-    ax.plot(
-        [D_pt[0], G_pt[0]], [D_pt[1], G_pt[1]], [D_pt[2], G_pt[2]],
-        linewidth=2
-    )
-
-    # Sommets
-    ax.scatter(*G_pt, s=80)
-    ax.scatter(*N_pt, s=80)
-    ax.scatter(*D_pt, s=80)
-
-    ax.text(G_pt[0] + 0.3, G_pt[1], G_pt[2], "G", fontsize=12, weight="bold")
-    ax.text(N_pt[0], N_pt[1] + 0.3, N_pt[2], "N", fontsize=12, weight="bold")
-    ax.text(D_pt[0], D_pt[1], D_pt[2] + 0.3, "D", fontsize=12, weight="bold")
-
-    # Point du texte analysé
-    ax.scatter(*P, s=140, marker="o")
-    ax.text(P[0] + 0.2, P[1] + 0.2, P[2] + 0.2, "Texte", fontsize=11, weight="bold")
-
-    # Projection discrète sur les axes
-    ax.plot([0, G], [0, 0], [0, 0], linestyle="--", linewidth=1)
-    ax.plot([0, 0], [0, N], [0, 0], linestyle="--", linewidth=1)
-    ax.plot([0, 0], [0, 0], [0, D], linestyle="--", linewidth=1)
-
-    # Segment origine -> point
-    ax.plot([0, G], [0, N], [0, D], linestyle=":", linewidth=1.5)
-
-    # Limites et labels
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 10)
-    ax.set_zlim(0, 10)
-
-    ax.set_xlabel("G — gnōsis")
-    ax.set_ylabel("N — nous")
-    ax.set_zlabel("D — doxa")
-
-    ax.set_title("Triangle cognitif 3D")
-
-    # Angle de vue
-    ax.view_init(elev=24, azim=35)
-
-    return fig
-
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
-
-try:
-    from streamlit_mic_recorder import speech_to_text
-    MICRO_AVAILABLE = True
-except Exception:
-    MICRO_AVAILABLE = False
-
-# -----------------------------
-# Page setup
-# -----------------------------
-st.set_page_config(
-    page_title="Mécroyance Lab — Fact-checking",
-    page_icon="🧠",
-    layout="wide",
-)
 
 
 # -----------------------------

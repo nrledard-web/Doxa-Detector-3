@@ -157,9 +157,7 @@ try:
     MICRO_AVAILABLE = True
 except Exception:
     MICRO_AVAILABLE = False
-    
 
-)
 
 
 # -----------------------------

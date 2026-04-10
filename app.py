@@ -1324,9 +1324,14 @@ if analyze_submitted:
                     classification=classification,
                     scores=scores
                 )
-                           st.write("### Pourquoi ce score")
+
                 st.write("### Pourquoi ce score")
+                           st.write("### Pourquoi ce score")
                 st.write(explication)
+else:
+    st.info(translations[lang]["paste_longer_text"])
+else:
+    st.info(translations[lang]["paste_longer_text"])
 
     else:
         st.info(translations[lang]["paste_longer_text"])

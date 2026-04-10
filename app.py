@@ -10,67 +10,83 @@ from newspaper import Article
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 from mpl_toolkits.mplot3d import Axes3D
-def plot_cognitive_triangle(G: float, N: float, D: float):
+def plot_cognitive_triangle_3d(G: float, N: float, D: float):
     """
-    Triangle cognitif G-N-D
-    G = savoir articulé
-    N = compréhension / intégration
-    D = certitude / doxa
+    Triangle cognitif 3D
+    G = gnōsis (savoir articulé)
+    N = nous (compréhension intégrée)
+    D = doxa (certitude assertive)
 
     Les valeurs sont attendues entre 0 et 10.
     """
-    # Sommets du triangle
-    G_pt = (0.0, 0.0)
-    D_pt = (10.0, 0.0)
-    N_pt = (5.0, 8.66)  # triangle équilatéral de côté 10
 
-    # Normalisation en poids
-    total = G + N + D
-    if total <= 0:
-        weights = (1/3, 1/3, 1/3)
-    else:
-        weights = (G / total, N / total, D / total)
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
-    # Coordonnées barycentriques -> coordonnées 2D
-    x = (
-        weights[0] * G_pt[0]
-        + weights[1] * N_pt[0]
-        + weights[2] * D_pt[0]
-    )
-    y = (
-        weights[0] * G_pt[1]
-        + weights[1] * N_pt[1]
-        + weights[2] * D_pt[1]
-    )
+    # Points de base du triangle
+    G_pt = [10, 0, 0]
+    N_pt = [0, 10, 0]
+    D_pt = [0, 0, 10]
 
-    fig, ax = plt.subplots(figsize=(7, 6))
+    # Point analysé
+    P = [G, N, D]
+
+    fig = plt.figure(figsize=(8, 7))
+    ax = fig.add_subplot(111, projection="3d")
 
     # Triangle principal
-    triangle = Polygon([G_pt, N_pt, D_pt], closed=True, fill=False, linewidth=2)
-    ax.add_patch(triangle)
+    verts = [[G_pt, N_pt, D_pt]]
+    tri = Poly3DCollection(verts, alpha=0.18, edgecolor="black", linewidths=1.5)
+    ax.add_collection3d(tri)
 
-    # Zones indicatives
-    ax.text(5, 7.6, "Zone interprétative", ha="center", fontsize=10)
-    ax.text(2.2, 1.0, "Ancrage / savoir", ha="center", fontsize=9)
-    ax.text(7.8, 1.0, "Rigidité / certitude", ha="center", fontsize=9)
+    # Arêtes du triangle
+    ax.plot(
+        [G_pt[0], N_pt[0]], [G_pt[1], N_pt[1]], [G_pt[2], N_pt[2]],
+        linewidth=2
+    )
+    ax.plot(
+        [N_pt[0], D_pt[0]], [N_pt[1], D_pt[1]], [N_pt[2], D_pt[2]],
+        linewidth=2
+    )
+    ax.plot(
+        [D_pt[0], G_pt[0]], [D_pt[1], G_pt[1]], [D_pt[2], G_pt[2]],
+        linewidth=2
+    )
+
+    # Sommets
+    ax.scatter(*G_pt, s=80)
+    ax.scatter(*N_pt, s=80)
+    ax.scatter(*D_pt, s=80)
+
+    ax.text(G_pt[0] + 0.3, G_pt[1], G_pt[2], "G", fontsize=12, weight="bold")
+    ax.text(N_pt[0], N_pt[1] + 0.3, N_pt[2], "N", fontsize=12, weight="bold")
+    ax.text(D_pt[0], D_pt[1], D_pt[2] + 0.3, "D", fontsize=12, weight="bold")
 
     # Point du texte analysé
-    ax.scatter(x, y, s=140, marker="o")
-    ax.text(x, y + 0.35, "Texte analysé", ha="center", fontsize=10, fontweight="bold")
+    ax.scatter(*P, s=140, marker="o")
+    ax.text(P[0] + 0.2, P[1] + 0.2, P[2] + 0.2, "Texte", fontsize=11, weight="bold")
 
-    # Axes visuels
-    ax.text(G_pt[0] - 0.4, G_pt[1] - 0.4, "G\n(Savoir)", ha="right", va="top", fontsize=11)
-    ax.text(D_pt[0] + 0.4, D_pt[1] - 0.4, "D\n(Certitude)", ha="left", va="top", fontsize=11)
-    ax.text(N_pt[0], N_pt[1] + 0.4, "N\n(Compréhension)", ha="center", va="bottom", fontsize=11)
+    # Projection discrète sur les axes
+    ax.plot([0, G], [0, 0], [0, 0], linestyle="--", linewidth=1)
+    ax.plot([0, 0], [0, N], [0, 0], linestyle="--", linewidth=1)
+    ax.plot([0, 0], [0, 0], [0, D], linestyle="--", linewidth=1)
 
-    # Affichage des valeurs
-    ax.text(0.4, -1.0, f"G = {G:.1f}", fontsize=10)
-    ax.text(4.2, -1.0, f"N = {N:.1f}", fontsize=10)
-    ax.text(8.2, -1.0, f"D = {D:.1f}", fontsize=10)
+    # Segment origine -> point
+    ax.plot([0, G], [0, N], [0, D], linestyle=":", linewidth=1.5)
 
-    ax.set_xlim(-1, 11)
-    ax.set_ylim(-1.5, 10)
-    ax.axis("off")
+    # Limites et labels
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+    ax.set_zlim(0, 10)
+
+    ax.set_xlabel("G — gnōsis")
+    ax.set_ylabel("N — nous")
+    ax.set_zlabel("D — doxa")
+
+    ax.set_title("Triangle cognitif 3D")
+
+    # Angle de vue
+    ax.view_init(elev=24, azim=35)
 
     return fig
 

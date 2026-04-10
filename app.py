@@ -1204,7 +1204,7 @@ Text to analyze:
 """
 
     try:
-        response = client.responses.create(model="gpt-4.1", input=prompt)
+        response = client.responses.create(model="gpt-4o", input=prompt)
         return response.output_text.strip()
     except Exception as e:
         return f"AI error: {e}"

@@ -1277,13 +1277,42 @@ if load_url_submitted:
 
 
 # -----------------------------
+# Micro juste au-dessus de la zone de texte
+# -----------------------------
+st.subheader("🎙️ Dictée vocale")
+
+if MICRO_AVAILABLE:
+    spoken_text = speech_to_text(
+        language="fr",
+        start_prompt="🎤 Parler",
+        stop_prompt="⏹️ Stop",
+        just_once=True,
+        use_container_width=True,
+        key="mic_main"
+    )
+
+    if spoken_text:
+        st.session_state.article = spoken_text
+        st.session_state.article_source = "paste"
+        st.success("Texte dicté ajouté.")
+else:
+    st.warning("Micro indisponible : module streamlit-mic-recorder non installé.")
+
+# -----------------------------
 # Main article form
 # -----------------------------
 previous_article = st.session_state.article
-with st.form("article_form"):
-    article = st.text_area(T["paste"], value=st.session_state.article, height=220)
-    analyze_submitted = st.form_submit_button(T["analyze"], use_container_width=True)
 
+with st.form("article_form"):
+    article = st.text_area(
+        T["paste"],
+        value=st.session_state.article,
+        height=220
+    )
+    analyze_submitted = st.form_submit_button(
+        T["analyze"],
+        use_container_width=True
+    )
 if article.strip() != previous_article.strip():
     st.session_state.article_source = "paste"
 st.session_state.article = article

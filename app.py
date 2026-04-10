@@ -1453,10 +1453,6 @@ st.caption(
     f"{T['manual_paste'] if st.session_state.get('article_source') == 'paste' else T['loaded_url_source']}"
 )
 
-st.caption(
-    f"{T['text_source']} : "
-    f"{T['manual_paste'] if st.session_state.get('article_source') == 'paste' else T['loaded_url_source']}"
-)
 
 
 # -----------------------------

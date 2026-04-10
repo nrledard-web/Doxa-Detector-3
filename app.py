@@ -1,31 +1,19 @@
+import streamlit as st
+
+st.set_page_config(
+    page_title="Mécroyance Lab — Fact-checking",
+    page_icon="🧠",
+    layout="wide",
+)
+
 # -----------------------------
 # Bannière professionnelle
 # -----------------------------
-import streamlit as st
+st.image("banner2.png", use_container_width=True)
 
-st.markdown(
-    """
-    <style>
-    .banner-container {
-        width: 100%;
-        padding: 10px 0px 25px 0px;
-        display: flex;
-        justify-content: center;
-    }
-    .banner-container img {
-        width: 100%;
-        max-width: 1100px;
-        border-radius: 14px;
-        box-shadow: 0px 8px 30px rgba(0,0,0,0.35);
-    }
-    </style>
-
-    <div class="banner-container">
-        <img src="banner2.png">
-    </div>
-    """,
-    unsafe_allow_html=True
-)
+st.title("DOXA DETECTOR")
+st.caption("Laboratoire de calibration cognitive — M = (G + N) − D")
+st.markdown("---")
 
 st.title("DOXA DETECTOR")
 st.caption("Laboratoire de calibration cognitive — M = (G + N) − D")

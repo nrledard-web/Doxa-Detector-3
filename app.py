@@ -1372,6 +1372,12 @@ st.caption(
 # Main analysis
 # -----------------------------
 if analyze_submitted:
+    fig_triangle = plot_cognitive_triangle_3d(
+    result["G"],
+    result["N"],
+    result["D"]
+    )
+    st.pyplot(fig_triangle, use_container_width=True)
     result = analyze_article(article)
 
     col1, col2, col3 = st.columns(3)

@@ -1383,6 +1383,56 @@ if analyze_submitted:
     st.divider()
     st.subheader("Triangle cognitif G-N-D")
     st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")
+    def plot_cognitive_triangle_3d(G: float, N: float, D: float):
+    """
+    Représentation 3D simple du triangle cognitif.
+    Axe X = G (gnōsis)
+    Axe Y = N (nous)
+    Axe Z = D (doxa)
+    """
+    fig = plt.figure(figsize=(7, 6))
+    ax = fig.add_subplot(111, projection="3d")
+
+    # Points de base
+    origin = (0, 0, 0)
+    g_pt = (G, 0, 0)
+    n_pt = (0, N, 0)
+    d_pt = (0, 0, D)
+
+    # Triangle cognitif
+    xs = [g_pt[0], n_pt[0], d_pt[0]]
+    ys = [g_pt[1], n_pt[1], d_pt[1]]
+    zs = [g_pt[2], n_pt[2], d_pt[2]]
+
+    # Arêtes du triangle
+    ax.plot([g_pt[0], n_pt[0]], [g_pt[1], n_pt[1]], [g_pt[2], n_pt[2]], linewidth=2)
+    ax.plot([n_pt[0], d_pt[0]], [n_pt[1], d_pt[1]], [n_pt[2], d_pt[2]], linewidth=2)
+    ax.plot([d_pt[0], g_pt[0]], [d_pt[1], g_pt[1]], [d_pt[2], g_pt[2]], linewidth=2)
+
+    # Lignes depuis l’origine
+    ax.plot([0, g_pt[0]], [0, g_pt[1]], [0, g_pt[2]], linestyle="dashed", alpha=0.6)
+    ax.plot([0, n_pt[0]], [0, n_pt[1]], [0, n_pt[2]], linestyle="dashed", alpha=0.6)
+    ax.plot([0, d_pt[0]], [0, d_pt[1]], [0, d_pt[2]], linestyle="dashed", alpha=0.6)
+
+    # Points
+    ax.scatter(G, 0, 0, s=80, label="G — gnōsis")
+    ax.scatter(0, N, 0, s=80, label="N — nous")
+    ax.scatter(0, 0, D, s=80, label="D — doxa")
+
+    # Centre approximatif du profil
+    ax.scatter(G / 3, N / 3, D / 3, s=120, marker="^", label="Profil cognitif")
+
+    # Labels
+    ax.set_xlabel("G — gnōsis")
+    ax.set_ylabel("N — nous")
+    ax.set_zlabel("D — doxa")
+    ax.set_title("Triangle cognitif 3D")
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 10)
+    ax.set_zlim(0, 10)
+    ax.legend()
+
+    return fig
 
     fig_triangle = plot_cognitive_triangle_3d(
     result["G"],

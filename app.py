@@ -916,6 +916,8 @@ def analyze_article(text: str) -> Dict:
 
 @st.cache_data(show_spinner=False, ttl=1800)
 def analyze_multiple_articles(keyword: str, max_results: int = 10) -> List[Dict]:
+    ...
+    return results
 def plot_cognitive_triangle_3d(G: float, N: float, D: float):
     """
     Représentation 3D simple du triangle cognitif.

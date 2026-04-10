@@ -1377,6 +1377,17 @@ if analyze_submitted:
     m7, m8 = st.columns(2)
     m7.metric("VC", round(result["avg_claim_verifiability"], 1))
     m8.metric("F", len(result["red_flags"]))
+    
+        st.divider()
+    st.subheader("Triangle cognitif G-N-D")
+    st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")
+
+    fig_triangle = plot_cognitive_triangle(
+        result["G"],
+        result["N"],
+        result["D"]
+    )
+    st.pyplot(fig_triangle, use_container_width=True)
 
     with st.expander(T["strengths_detected"], expanded=True):
         if result["strengths"]:

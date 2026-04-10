@@ -129,6 +129,62 @@ try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
+    import io
+import streamlit as st
+
+try:
+    from streamlit_mic_recorder import mic_recorder
+    MIC_AVAILABLE = True
+except Exception:
+    MIC_AVAILABLE = False
+
+
+def transcribe_audio_with_openai(audio_bytes: bytes, filename: str = "audio.webm") -> str:
+    if client is None:
+        return ""
+
+    try:
+        audio_file = io.BytesIO(audio_bytes)
+        audio_file.name = filename  # important pour l'API
+        transcript = client.audio.transcriptions.create(
+            model="gpt-4o-mini-transcribe",
+            file=audio_file
+        )
+        return transcript.text.strip()
+    except Exception as e:
+        st.error(f"Erreur transcription : {e}")
+        return ""
+
+
+# -----------------------------
+# Microphone
+# -----------------------------
+st.markdown("### 🎙️ Dictée vocale")
+st.caption("Enregistrez votre voix, puis le texte sera injecté dans la zone d’analyse.")
+
+if MIC_AVAILABLE:
+    audio = mic_recorder(
+        start_prompt="🎙️ Commencer l’enregistrement",
+        stop_prompt="⏹️ Arrêter l’enregistrement",
+        just_once=True,
+        use_container_width=True,
+        format="webm",
+        key="my_mic"
+    )
+
+    if audio and isinstance(audio, dict) and audio.get("bytes"):
+        st.audio(audio["bytes"])
+        with st.spinner("Transcription en cours..."):
+            transcript = transcribe_audio_with_openai(
+                audio["bytes"],
+                filename=f"recording.{audio.get('format', 'webm')}"
+            )
+        if transcript:
+            st.session_state.article = transcript
+            st.session_state.article_source = "paste"
+            st.success("Texte dicté reçu.")
+else:
+    st.info("Microphone indisponible sur cette version.")
 try:
     from streamlit_mic_recorder import speech_to_text
     MICRO_AVAILABLE = True
@@ -1373,37 +1429,7 @@ if load_url_submitted:
             st.error(T["unable_to_retrieve_text"])
     else:
         st.warning(T["paste_url_first"])
-# -----------------------------
-# Microphone
-# -----------------------------
-st.markdown("### 🎙️ Dictée vocale")
-st.caption("Enregistrez votre voix, puis le texte sera injecté dans la zone d’analyse.")
 
-if MIC_AVAILABLE:
-    audio = mic_recorder(
-        start_prompt="🎙️ Commencer l’enregistrement",
-        stop_prompt="⏹️ Arrêter l’enregistrement",
-        just_once=True,
-        use_container_width=True,
-        format="webm",
-        key="my_mic"
-    )
-
-    if audio and isinstance(audio, dict) and audio.get("bytes"):
-        st.audio(audio["bytes"])
-
-        with st.spinner("Transcription en cours..."):
-            transcript = transcribe_audio_with_openai(
-                audio["bytes"],
-                filename=f"recording.{audio.get('format', 'webm')}"
-            )
-
-        if transcript:
-            st.session_state.article = transcript
-            st.session_state.article_source = "paste"
-            st.success("Texte dicté reçu.")
-else:
-    st.info("Microphone indisponible sur cette version.")
 
 # -----------------------------
 # Main article form
@@ -1479,7 +1505,7 @@ if analyze_submitted:
     m7, m8 = st.columns(2)
     m7.metric("VC", round(result["avg_claim_verifiability"], 1))
     m8.metric("F", len(result["red_flags"]))
-    
+
     st.divider()
     st.subheader("Triangle cognitif G-N-D")
     st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")

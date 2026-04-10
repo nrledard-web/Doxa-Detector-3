@@ -1361,7 +1361,7 @@ if analyze_submitted:
     st.subheader(f"{couleur} {T['credibility_gauge']} : {etiquette}")
     st.progress(score / 20)
     st.caption(f"{T['score']} : {score}/20 — {message}")
-        st.subheader("Diagnostic cognitif")
+    st.subheader("Diagnostic cognitif")
 
     life_score = round((result["hard_fact_score"] / 20) * 100, 1)
     mecroyance_bar = max(0.0, min(1.0, (result["M"] + 10) / 30))

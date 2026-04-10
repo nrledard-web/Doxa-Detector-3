@@ -1462,3 +1462,4 @@ if st.button("Tester l'explication IA"):
 
     st.write("### Pourquoi ce score")
     st.write(explication)
+ 

@@ -2,6 +2,11 @@
 # Bannière professionnelle
 # -----------------------------
 import streamlit as st
+st.set_page_config(
+    page_title="Mécroyance Lab — Fact-checking",
+    page_icon="🧠",
+    layout="wide",
+)
 
 st.markdown(
     """
@@ -155,36 +160,6 @@ def transcribe_audio_with_openai(audio_bytes: bytes, filename: str = "audio.webm
         st.error(f"Erreur transcription : {e}")
         return ""
 
-
-# -----------------------------
-# Microphone
-# -----------------------------
-st.markdown("### 🎙️ Dictée vocale")
-st.caption("Enregistrez votre voix, puis le texte sera injecté dans la zone d’analyse.")
-
-if MIC_AVAILABLE:
-    audio = mic_recorder(
-        start_prompt="🎙️ Commencer l’enregistrement",
-        stop_prompt="⏹️ Arrêter l’enregistrement",
-        just_once=True,
-        use_container_width=True,
-        format="webm",
-        key="my_mic"
-    )
-
-    if audio and isinstance(audio, dict) and audio.get("bytes"):
-        st.audio(audio["bytes"])
-        with st.spinner("Transcription en cours..."):
-            transcript = transcribe_audio_with_openai(
-                audio["bytes"],
-                filename=f"recording.{audio.get('format', 'webm')}"
-            )
-        if transcript:
-            st.session_state.article = transcript
-            st.session_state.article_source = "paste"
-            st.success("Texte dicté reçu.")
-else:
-    st.info("Microphone indisponible sur cette version.")
 try:
     from streamlit_mic_recorder import speech_to_text
     MICRO_AVAILABLE = True

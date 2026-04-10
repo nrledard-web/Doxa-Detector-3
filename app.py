@@ -1542,15 +1542,13 @@ if analyze_submitted:
     )
 
     if not claims_df.empty:
-        st.dataframe(claims_df, use_container_width=True, hide_index=True)
-        if client is not None:
-    else:
-        st.info(T["paste_longer_text"])
+    st.dataframe(claims_df, use_container_width=True, hide_index=True)
+else:
+    st.info(T["paste_longer_text"])
 
     st.divider()
     st.subheader(T["ai_module"])
     st.caption(T["ai_module_caption"])
-    if client is None:
         st.warning(T["ai_unavailable"])
     else:
         if st.button(T["generate_ai_analysis"], key="generate_ai_analysis"):

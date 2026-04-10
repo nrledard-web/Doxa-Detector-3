@@ -129,7 +129,11 @@ try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
-
+try:
+    from streamlit_mic_recorder import speech_to_text
+    MICRO_AVAILABLE = True
+except Exception:
+    MICRO_AVAILABLE = False
 
 # -----------------------------
 # Page setup

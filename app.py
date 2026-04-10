@@ -1378,7 +1378,7 @@ if analyze_submitted:
     m7.metric("VC", round(result["avg_claim_verifiability"], 1))
     m8.metric("F", len(result["red_flags"]))
     
-        st.divider()
+    st.divider()
     st.subheader("Triangle cognitif G-N-D")
     st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")
 

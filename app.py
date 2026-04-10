@@ -1554,8 +1554,8 @@ def plot_cognitive_triangle_3d(G: float, N: float, D: float):
                         st.warning(T["no_strong_sources_found"])
         else:
             st.info(T["no_corroboration_found"])
-else:
-    st.info(T["paste_text_or_load_url"])
+    else:
+        st.info(T["paste_text_or_load_url"])
 
 
 # -----------------------------

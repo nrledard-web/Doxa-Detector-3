@@ -9,6 +9,7 @@ from ddgs import DDGS
 from newspaper import Article
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
+from mpl_toolkits.mplot3d import Axes3D
 def plot_cognitive_triangle(G: float, N: float, D: float):
     """
     Triangle cognitif G-N-D

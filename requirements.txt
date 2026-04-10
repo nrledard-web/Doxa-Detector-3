@@ -8,3 +8,4 @@ newspaper3k
 ddgs
 streamlit-mic-recorder
 openai
+matplotlib

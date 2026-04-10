@@ -1402,14 +1402,56 @@ if load_url_submitted:
 # -----------------------------
 # Main article form
 # -----------------------------
+# -----------------------------
+# Zone de saisie + micro visuellement collé au texte
+# -----------------------------
 previous_article = st.session_state.article
-with st.form("article_form"):
-    article = st.text_area(T["paste"], value=st.session_state.article, height=220)
-    analyze_submitted = st.form_submit_button(T["analyze"], use_container_width=True)
+
+st.markdown("### Zone d’analyse")
+
+with st.container(border=True):
+    st.caption("Collez un texte, chargez une URL, ou dictez directement.")
+
+    if MICRO_AVAILABLE:
+        spoken_text = speech_to_text(
+            language="fr",
+            start_prompt="🎙️ Dicter",
+            stop_prompt="⏹️ Stop",
+            just_once=True,
+            use_container_width=True,
+            key="speech_to_text_article"
+        )
+
+        if spoken_text:
+            st.session_state.article = spoken_text
+            st.session_state.article_source = "paste"
+            st.success("Texte dicté reçu.")
+            st.rerun()
+    else:
+        st.info("Microphone indisponible sur cette version.")
+
+    with st.form("article_form"):
+        article = st.text_area(
+            T["paste"],
+            value=st.session_state.article,
+            height=220,
+            label_visibility="collapsed",
+            placeholder=T["paste"]
+        )
+        analyze_submitted = st.form_submit_button(
+            T["analyze"],
+            use_container_width=True
+        )
 
 if article.strip() != previous_article.strip():
     st.session_state.article_source = "paste"
+
 st.session_state.article = article
+
+st.caption(
+    f"{T['text_source']} : "
+    f"{T['manual_paste'] if st.session_state.get('article_source') == 'paste' else T['loaded_url_source']}"
+)
 
 st.caption(
     f"{T['text_source']} : "

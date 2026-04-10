@@ -1294,10 +1294,11 @@ if analyze_submitted:
 
         st.markdown("## Explication IA des affirmations")
         show_ai_explanations = st.checkbox("Afficher les explications IA", value=False)
-    if not claims_df.empty:
-        st.dataframe(claims_df, use_container_width=True, hide_index=True)
+        if not claims_df.empty:
+    st.dataframe(claims_df, use_container_width=True, hide_index=True)
 
-        show_ai_explanations = st.checkbox("Afficher les explications IA", value=False)
+        for i, c in enumerate(result["claims"], start=1):
+    show_ai_explanations = st.checkbox("Afficher les explications IA", value=False)
 
     if show_ai_explanations:
         st.markdown("## Explication IA des affirmations")
@@ -1331,8 +1332,6 @@ else:
     st.info(translations[lang]["paste_longer_text"])
     else:
         st.info(translations[lang]["paste_longer_text"])
-else:
-    st.info(translations[lang]["paste_longer_text"])
 
     if st.session_state.get("article_source") == "paste":
         st.divider()
@@ -1389,6 +1388,7 @@ else:
             corroboration = corroborate_claims(article, max_claims=5, max_results_per_claim=3)
 
         if corroboration:
+            for i, item in enumerate(corroboration, start=1):
             for i, c in enumerate(result["claims"][:3], start=1):
                 title_preview = item["claim"][:140] + ("..." if len(item["claim"]) > 140 else "")
                 verdict = item["verdict"]
@@ -1462,4 +1462,3 @@ if st.button("Tester l'explication IA"):
 
     st.write("### Pourquoi ce score")
     st.write(explication)
- 

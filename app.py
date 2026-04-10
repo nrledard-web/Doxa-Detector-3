@@ -157,14 +157,6 @@ try:
     MICRO_AVAILABLE = True
 except Exception:
     MICRO_AVAILABLE = False
-
-# -----------------------------
-# Page setup
-# -----------------------------
-st.set_page_config(
-    page_title="Mécroyance Lab — Fact-checking",
-    page_icon="🧠",
-    layout="wide",
 )
 
 

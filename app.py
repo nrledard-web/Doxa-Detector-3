@@ -9,6 +9,69 @@ from ddgs import DDGS
 from newspaper import Article
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
+def plot_cognitive_triangle(G: float, N: float, D: float):
+    """
+    Triangle cognitif G-N-D
+    G = savoir articulé
+    N = compréhension / intégration
+    D = certitude / doxa
+
+    Les valeurs sont attendues entre 0 et 10.
+    """
+    # Sommets du triangle
+    G_pt = (0.0, 0.0)
+    D_pt = (10.0, 0.0)
+    N_pt = (5.0, 8.66)  # triangle équilatéral de côté 10
+
+    # Normalisation en poids
+    total = G + N + D
+    if total <= 0:
+        weights = (1/3, 1/3, 1/3)
+    else:
+        weights = (G / total, N / total, D / total)
+
+    # Coordonnées barycentriques -> coordonnées 2D
+    x = (
+        weights[0] * G_pt[0]
+        + weights[1] * N_pt[0]
+        + weights[2] * D_pt[0]
+    )
+    y = (
+        weights[0] * G_pt[1]
+        + weights[1] * N_pt[1]
+        + weights[2] * D_pt[1]
+    )
+
+    fig, ax = plt.subplots(figsize=(7, 6))
+
+    # Triangle principal
+    triangle = Polygon([G_pt, N_pt, D_pt], closed=True, fill=False, linewidth=2)
+    ax.add_patch(triangle)
+
+    # Zones indicatives
+    ax.text(5, 7.6, "Zone interprétative", ha="center", fontsize=10)
+    ax.text(2.2, 1.0, "Ancrage / savoir", ha="center", fontsize=9)
+    ax.text(7.8, 1.0, "Rigidité / certitude", ha="center", fontsize=9)
+
+    # Point du texte analysé
+    ax.scatter(x, y, s=140, marker="o")
+    ax.text(x, y + 0.35, "Texte analysé", ha="center", fontsize=10, fontweight="bold")
+
+    # Axes visuels
+    ax.text(G_pt[0] - 0.4, G_pt[1] - 0.4, "G\n(Savoir)", ha="right", va="top", fontsize=11)
+    ax.text(D_pt[0] + 0.4, D_pt[1] - 0.4, "D\n(Certitude)", ha="left", va="top", fontsize=11)
+    ax.text(N_pt[0], N_pt[1] + 0.4, "N\n(Compréhension)", ha="center", va="bottom", fontsize=11)
+
+    # Affichage des valeurs
+    ax.text(0.4, -1.0, f"G = {G:.1f}", fontsize=10)
+    ax.text(4.2, -1.0, f"N = {N:.1f}", fontsize=10)
+    ax.text(8.2, -1.0, f"D = {D:.1f}", fontsize=10)
+
+    ax.set_xlim(-1, 11)
+    ax.set_ylim(-1.5, 10)
+    ax.axis("off")
+
+    return fig
 
 try:
     from openai import OpenAI

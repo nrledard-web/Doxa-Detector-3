@@ -7,6 +7,8 @@ import pandas as pd
 import streamlit as st
 from ddgs import DDGS
 from newspaper import Article
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon
 
 try:
     from openai import OpenAI

@@ -1439,8 +1439,7 @@ if st.button(T["analyze_topic"], key="analyze_topic"):
         st.session_state.multi_results = []
         st.warning(T["enter_keyword_first"])
 
-
-if st.session_state.multi_results:
+if st.session_state.get("multi_results"):
     df_multi = pd.DataFrame(st.session_state.multi_results).sort_values(
         "Hard Fact Score",
         ascending=False
@@ -1467,8 +1466,26 @@ if st.session_state.multi_results:
 
     for i, row in df_multi.reset_index(drop=True).iterrows():
         with st.container(border=True):
-            st.markdown(f"**{row['Title']}**")
+            st.markdown(f"### {row['Title']}")
             st.caption(f"{row['Source']}")
+
+            score = row["Hard Fact Score"]
+
+            if score <= 6:
+                color = "🔴"
+                label = "Fragile"
+            elif score <= 11:
+                color = "🟠"
+                label = "Douteux"
+            elif score <= 15:
+                color = "🟡"
+                label = "Plausible"
+            else:
+                color = "🟢"
+                label = "Robuste"
+
+            st.markdown(f"**{color} Score : {score}/20 — {label}**")
+            st.progress(score / 20)
 
             col1, col2 = st.columns(2)
 
@@ -1492,12 +1509,8 @@ if st.session_state.multi_results:
                     else:
                         st.warning("Impossible d'extraire le texte.")
 
-elif st.session_state.last_keyword:
+elif st.session_state.get("last_keyword"):
     st.warning(T["no_exploitable_articles_found"])
-
-
-# -----------------------------
-# URL form
 # -----------------------------
 with st.form("url_form"):
     url = st.text_input(T["url"])
@@ -1509,7 +1522,9 @@ if load_url_submitted:
         if texte:
             st.session_state.article = texte
             st.session_state.article_source = "url"
+            st.session_state.loaded_url = url
             st.success(T["article_loaded_from_url"])
+            st.rerun()
         else:
             st.error(T["unable_to_retrieve_text"])
     else:

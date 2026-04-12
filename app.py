@@ -1,22 +1,10 @@
 # -----------------------------
-# Bannière professionnelle
+# Imports
 # -----------------------------
 import streamlit as st
-st.set_page_config(
-    page_title="Mécroyance Lab — Fact-checking",
-    page_icon="🧠",
-    layout="wide",
-)
-
-st.image("banner2.png", use_container_width=True)
-
-st.title("DOXA DETECTOR")
-st.caption("Laboratoire de calibration cognitive — M = (G + N) − D")
-
-st.markdown("---")
-
 import json
 import re
+import io
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -27,7 +15,40 @@ from newspaper import Article
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 from mpl_toolkits.mplot3d import Axes3D
-from streamlit_mic_recorder import speech_to_text
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
+
+try:
+    from streamlit_mic_recorder import speech_to_text
+    MICRO_AVAILABLE = True
+except Exception:
+    speech_to_text = None
+    MICRO_AVAILABLE = False
+
+
+# -----------------------------
+# Configuration page
+# -----------------------------
+st.set_page_config(
+    page_title="DOXA Detector",
+    page_icon="🧠",
+    layout="wide",
+)
+
+st.image("banner2.png", use_container_width=True)
+
+st.caption("Laboratoire de calibration cognitive — M = (G + N) − D")
+st.markdown("---")
+
+# -----------------------------
+# Bannière professionnelle
+# -----------------------------
+
+
 def plot_cognitive_triangle_3d(G: float, N: float, D: float):
     """
     Triangle cognitif 3D
@@ -38,41 +59,22 @@ def plot_cognitive_triangle_3d(G: float, N: float, D: float):
     Les valeurs sont attendues entre 0 et 10.
     """
 
-    import requests
-    import matplotlib.pyplot as plt
-    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
-
-    # Points de base du triangle
     G_pt = [10, 0, 0]
     N_pt = [0, 10, 0]
     D_pt = [0, 0, 10]
-
-    # Point analysé
     P = [G, N, D]
 
     fig = plt.figure(figsize=(8, 7))
     ax = fig.add_subplot(111, projection="3d")
 
-    # Triangle principal
     verts = [[G_pt, N_pt, D_pt]]
     tri = Poly3DCollection(verts, alpha=0.18, edgecolor="black", linewidths=1.5)
     ax.add_collection3d(tri)
 
-    # Arêtes du triangle
-    ax.plot(
-        [G_pt[0], N_pt[0]], [G_pt[1], N_pt[1]], [G_pt[2], N_pt[2]],
-        linewidth=2
-    )
-    ax.plot(
-        [N_pt[0], D_pt[0]], [N_pt[1], D_pt[1]], [N_pt[2], D_pt[2]],
-        linewidth=2
-    )
-    ax.plot(
-        [D_pt[0], G_pt[0]], [D_pt[1], G_pt[1]], [D_pt[2], G_pt[2]],
-        linewidth=2
-    )
+    ax.plot([G_pt[0], N_pt[0]], [G_pt[1], N_pt[1]], [G_pt[2], N_pt[2]], linewidth=2)
+    ax.plot([N_pt[0], D_pt[0]], [N_pt[1], D_pt[1]], [N_pt[2], D_pt[2]], linewidth=2)
+    ax.plot([D_pt[0], G_pt[0]], [D_pt[1], G_pt[1]], [D_pt[2], G_pt[2]], linewidth=2)
 
-    # Sommets
     ax.scatter(*G_pt, s=80)
     ax.scatter(*N_pt, s=80)
     ax.scatter(*D_pt, s=80)
@@ -81,19 +83,15 @@ def plot_cognitive_triangle_3d(G: float, N: float, D: float):
     ax.text(N_pt[0], N_pt[1] + 0.3, N_pt[2], "N", fontsize=12, weight="bold")
     ax.text(D_pt[0], D_pt[1], D_pt[2] + 0.3, "D", fontsize=12, weight="bold")
 
-    # Point du texte analysé
     ax.scatter(*P, s=140, marker="o")
     ax.text(P[0] + 0.2, P[1] + 0.2, P[2] + 0.2, "Texte", fontsize=11, weight="bold")
 
-    # Projection discrète sur les axes
     ax.plot([0, G], [0, 0], [0, 0], linestyle="--", linewidth=1)
     ax.plot([0, 0], [0, N], [0, 0], linestyle="--", linewidth=1)
     ax.plot([0, 0], [0, 0], [0, D], linestyle="--", linewidth=1)
 
-    # Segment origine -> point
     ax.plot([0, G], [0, N], [0, D], linestyle=":", linewidth=1.5)
 
-    # Limites et labels
     ax.set_xlim(0, 10)
     ax.set_ylim(0, 10)
     ax.set_zlim(0, 10)
@@ -101,42 +99,10 @@ def plot_cognitive_triangle_3d(G: float, N: float, D: float):
     ax.set_xlabel("G — gnōsis")
     ax.set_ylabel("N — nous")
     ax.set_zlabel("D — doxa")
-
     ax.set_title("Triangle cognitif 3D")
-
-    # Angle de vue
     ax.view_init(elev=24, azim=35)
 
     return fig
-
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
-    import io
-import streamlit as st
-
-def transcribe_audio_with_openai(audio_bytes: bytes, filename: str = "audio.webm") -> str:
-    if client is None:
-        return ""
-
-    try:
-        audio_file = io.BytesIO(audio_bytes)
-        audio_file.name = filename  # important pour l'API
-        transcript = client.audio.transcriptions.create(
-            model="gpt-4o-mini-transcribe",
-            file=audio_file
-        )
-        return transcript.text.strip()
-    except Exception as e:
-        st.error(f"Erreur transcription : {e}")
-        return ""
-
-try:
-    from streamlit_mic_recorder import speech_to_text
-    MICRO_AVAILABLE = True
-except Exception:
-    MICRO_AVAILABLE = False
 
 
 
@@ -144,14 +110,11 @@ except Exception:
 # OpenAI client
 # -----------------------------
 def get_openai_client() -> Optional["OpenAI"]:
+
     if OpenAI is None:
         return None
 
-    api_key = None
-    try:
-        api_key = st.secrets["OPENAI_API_KEY"]
-    except Exception:
-        api_key = None
+    api_key = st.secrets.get("OPENAI_API_KEY")
 
     if not api_key:
         return None
@@ -1442,21 +1405,6 @@ if "article_source" not in st.session_state:
 if "loaded_url" not in st.session_state:
     st.session_state.loaded_url = ""
 
-if "last_result" not in st.session_state:
-    st.session_state.last_result = None
-
-if "last_article" not in st.session_state:
-    st.session_state.last_article = ""
-
-if "ai_summary" not in st.session_state:
-    st.session_state.ai_summary = ""
-
-if "multi_results" not in st.session_state:
-    st.session_state.multi_results = []
-
-if "last_keyword" not in st.session_state:
-    st.session_state.last_keyword = ""
-
 if use_sample:
     st.session_state.article = SAMPLE_ARTICLE
     st.session_state.article_source = "paste"
@@ -1654,9 +1602,6 @@ if "last_keyword" not in st.session_state:
 # -----------------------------
 # Main analysis
 # -----------------------------
-# -----------------------------
-# Main analysis
-# -----------------------------
 if analyze_submitted:
     st.session_state.last_result = analyze_article(article)
     st.session_state.last_article = article
@@ -1840,7 +1785,7 @@ if result:
     else:
         if st.button(T["generate_ai_analysis"], key="generate_ai_analysis"):
             with st.spinner("AI is analyzing..."):
-                ai_summary = generate_ai_summary(lang, article, result)
+                ai_summary = generate_ai_summary(lang, article_for_analysis, result)
             st.subheader(T["ai_analysis_result"])
             st.markdown(ai_summary)
     if st.session_state.get("article_source") == "paste":

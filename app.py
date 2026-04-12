@@ -867,72 +867,41 @@ def search_articles_by_keyword(keyword: str, max_results: int = 10) -> List[Dict
         "theguardian.com", "bloomberg.com", "dw.com", "aljazeera.com",
         "nature.com", "science.org", "who.int", "un.org", "worldbank.org",
         "elpais.com", "elmundo.es", "corriere.it", "spiegel.de", "zeit.de",
-        "france24.com", "20minutes.fr", "ouest-france.fr", "tf1info.fr",
-        "cnbc.com", "npr.org", "abcnews.go.com", "cbsnews.com",
     ]
 
-    try:
-        with DDGS() as ddgs:
-            query = f"{keyword} news article analysis report"
-            ddg_results = list(ddgs.text(query, max_results=max_results * 8))
-
-            for r in ddg_results:
-                article_url = r.get("href", "")
-                title = r.get("title", "Untitled")
-
-                if not article_url or article_url in seen_urls:
-                    continue
-
-                if not any(domain in article_url for domain in trusted_domains):
-                    continue
-
-                seen_urls.add(article_url)
-
-                articles.append(
-                    {
-                        "title": title,
-                        "url": article_url,
-                        "source": article_url.split("/")[2] if "/" in article_url else article_url,
-                    }
-                )
-
-                if len(articles) >= max_results:
-                    break
-
-    except Exception as e:
-        st.warning(f"DuckDuckGo fallback error: {e}")
-
-    return articles[:max_results]
-
-
-    trusted_domains = [
-        "lemonde.fr", "lefigaro.fr", "liberation.fr", "francetvinfo.fr",
-        "lexpress.fr", "lepoint.fr", "nouvelobs.com", "la-croix.com",
-        "lesechos.fr", "latribune.fr", "mediapart.fr", "arte.tv",
-        "bbc.com", "reuters.com", "apnews.com", "nytimes.com",
-        "theguardian.com", "bloomberg.com", "dw.com", "aljazeera.com",
-        "nature.com", "science.org", "who.int", "un.org", "worldbank.org",
-        "elpais.com", "elmundo.es", "corriere.it", "spiegel.de", "zeit.de",
-    ]
     results: List[Dict] = []
+
     try:
         with DDGS() as ddgs:
             query = f"{keyword} news article analysis study report"
             ddg_results = list(ddgs.text(query, max_results=max_results * 5))
+
             for r in ddg_results:
                 url = r.get("href", "")
-                if any(domain in url for domain in trusted_domains):
-                    results.append(
-                        {
-                            "title": r.get("title", "Untitled"),
-                            "url": url,
-                            "source": url.split("/")[2] if "/" in url else url,
-                        }
-                    )
-                    if len(results) >= max_results:
-                        break
+                title = r.get("title", "Untitled")
+
+                if not url or url in seen_urls:
+                    continue
+
+                if not any(domain in url for domain in trusted_domains):
+                    continue
+
+                seen_urls.add(url)
+
+                results.append(
+                    {
+                        "title": title,
+                        "url": url,
+                        "source": url.split("/")[2] if "://" in url else url,
+                    }
+                )
+
+                if len(results) >= max_results:
+                    break
+
     except Exception as e:
         st.warning(f"Search error: {e}")
+
     return results
 
 
@@ -1089,6 +1058,9 @@ def analyze_article(text: str) -> Dict:
     if sum(1 for c in claims if c.status == T["very_fragile"]) >= 2:
         weaknesses.append(T["multiple_claims_very_fragile"])
 
+    M = (G + N) - D
+    ME = (2 * D) - (G + N)
+
     return {
         "words": len(words),
         "sentences": len(sentences),
@@ -1096,6 +1068,7 @@ def analyze_article(text: str) -> Dict:
         "N": N,
         "D": D,
         "M": M,
+        "ME": ME,
         "V": V,
         "R": R,
         "improved": improved,
@@ -1133,7 +1106,17 @@ def analyze_multiple_articles(keyword: str, max_results: int = 10) -> List[Dict]
         except Exception:
             continue
     return results
-
+@st.cache_data(show_spinner=False, ttl=1800)
+def fetch_text_for_textarea(url: str) -> str:
+    """
+    Charge le texte principal d'une URL pour l'envoyer
+    dans la zone d'analyse.
+    """
+    try:
+        text = extract_article_from_url(url)
+        return (text or "").strip()
+    except Exception:
+        return ""
 
 # -----------------------------
 # Corroboration
@@ -1408,14 +1391,34 @@ with st.expander(T["settings"], expanded=False):
         f"- **15–20** : {T['scale_15_20']}"
     )
 
-
 if "article" not in st.session_state:
     st.session_state.article = SAMPLE_ARTICLE
+
 if "article_source" not in st.session_state:
     st.session_state.article_source = "paste"
+
+if "loaded_url" not in st.session_state:
+    st.session_state.loaded_url = ""
+
+if "last_result" not in st.session_state:
+    st.session_state.last_result = None
+
+if "last_article" not in st.session_state:
+    st.session_state.last_article = ""
+
+if "ai_summary" not in st.session_state:
+    st.session_state.ai_summary = ""
+
+if "multi_results" not in st.session_state:
+    st.session_state.multi_results = []
+
+if "last_keyword" not in st.session_state:
+    st.session_state.last_keyword = ""
+
 if use_sample:
     st.session_state.article = SAMPLE_ARTICLE
     st.session_state.article_source = "paste"
+    st.session_state.loaded_url = ""
 
 
 # -----------------------------
@@ -1427,29 +1430,70 @@ keyword = st.text_input(T["topic"], placeholder=T["topic_placeholder"])
 if st.button(T["analyze_topic"], key="analyze_topic"):
     if keyword.strip():
         st.info(T["searching"])
-        multiple_results = analyze_multiple_articles(keyword.strip(), max_results=10)
-        if multiple_results:
-            df_multi = pd.DataFrame(multiple_results).sort_values("Hard Fact Score", ascending=False)
-            st.success(f"{len(df_multi)} {T['articles_analyzed']}")
-
-            c1, c2 = st.columns(2)
-            c1.metric(T["analyzed_articles"], len(df_multi))
-            c2.metric(T["avg_hard_fact"], round(df_multi["Hard Fact Score"].mean(), 1))
-            st.metric(T["avg_classic_score"], round(df_multi["Classic Score"].mean(), 1))
-
-            ecart_type_hf = df_multi["Hard Fact Score"].std()
-            indice_doxa = "high" if ecart_type_hf < 1.5 else ("medium" if ecart_type_hf < 3 else "low")
-            st.metric(T["topic_doxa_index"], T[indice_doxa])
-
-            st.subheader(T["credibility_score_dispersion"])
-            df_plot = df_multi.copy()
-            df_plot["Article"] = [f"{T['article_label']} {i+1}" for i in range(len(df_plot))]
-            st.bar_chart(df_plot.set_index("Article")["Hard Fact Score"])
-            st.dataframe(df_multi, use_container_width=True, hide_index=True)
-        else:
-            st.warning(T["no_exploitable_articles_found"])
+        st.session_state.multi_results = analyze_multiple_articles(
+            keyword.strip(),
+            max_results=10
+        )
+        st.session_state.last_keyword = keyword.strip()
     else:
+        st.session_state.multi_results = []
         st.warning(T["enter_keyword_first"])
+
+
+if st.session_state.multi_results:
+    df_multi = pd.DataFrame(st.session_state.multi_results).sort_values(
+        "Hard Fact Score",
+        ascending=False
+    )
+
+    st.success(f"{len(df_multi)} {T['articles_analyzed']}")
+
+    c1, c2 = st.columns(2)
+    c1.metric(T["analyzed_articles"], len(df_multi))
+    c2.metric(T["avg_hard_fact"], round(df_multi["Hard Fact Score"].mean(), 1))
+    st.metric(T["avg_classic_score"], round(df_multi["Classic Score"].mean(), 1))
+
+    ecart_type_hf = df_multi["Hard Fact Score"].std()
+    indice_doxa = "high" if ecart_type_hf < 1.5 else ("medium" if ecart_type_hf < 3 else "low")
+    st.metric(T["topic_doxa_index"], T[indice_doxa])
+
+    st.subheader(T["credibility_score_dispersion"])
+    df_plot = df_multi.copy()
+    df_plot["Article"] = [f"{T['article_label']} {i+1}" for i in range(len(df_plot))]
+    st.bar_chart(df_plot.set_index("Article")["Hard Fact Score"])
+    st.dataframe(df_multi, use_container_width=True, hide_index=True)
+
+    st.markdown("### Actions sur les articles trouvés")
+
+    for i, row in df_multi.reset_index(drop=True).iterrows():
+        with st.container(border=True):
+            st.markdown(f"**{row['Title']}**")
+            st.caption(f"{row['Source']}")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.link_button(
+                    "🌐 Ouvrir l'article",
+                    row["URL"],
+                    use_container_width=True
+                )
+
+            with col2:
+                if st.button(f"📥 Charger pour analyse", key=f"load_article_{i}"):
+                    loaded_text = fetch_text_for_textarea(row["URL"])
+
+                    if loaded_text:
+                        st.session_state.article = loaded_text
+                        st.session_state.article_source = "url"
+                        st.session_state.loaded_url = row["URL"]
+                        st.success("Article chargé dans la zone de texte.")
+                        st.rerun()
+                    else:
+                        st.warning("Impossible d'extraire le texte.")
+
+elif st.session_state.last_keyword:
+    st.warning(T["no_exploitable_articles_found"])
 
 
 # -----------------------------
@@ -1476,6 +1520,7 @@ if load_url_submitted:
 # Main article form
 # -----------------------------
 # -----------------------------
+# -----------------------------
 # Zone de saisie + micro visuellement collé au texte
 # -----------------------------
 previous_article = st.session_state.article
@@ -1483,6 +1528,7 @@ previous_article = st.session_state.article
 st.markdown("### Zone d’analyse")
 
 with st.container(border=True):
+
     st.caption("Collez un texte, chargez une URL, ou dictez directement.")
 
     if MICRO_AVAILABLE:
@@ -1500,17 +1546,19 @@ with st.container(border=True):
             st.session_state.article_source = "paste"
             st.success("Texte dicté reçu.")
             st.rerun()
+
     else:
         st.info("Microphone indisponible sur cette version.")
 
     with st.form("article_form"):
         article = st.text_area(
             T["paste"],
-            value=st.session_state.article,
+            key="article",
             height=220,
             label_visibility="collapsed",
             placeholder=T["paste"]
         )
+
         analyze_submitted = st.form_submit_button(
             T["analyze"],
             use_container_width=True
@@ -1519,12 +1567,17 @@ with st.container(border=True):
 if article.strip() != previous_article.strip():
     st.session_state.article_source = "paste"
 
-st.session_state.article = article
 
-st.caption(
-    f"{T['text_source']} : "
-    f"{T['manual_paste'] if st.session_state.get('article_source') == 'paste' else T['loaded_url_source']}"
+source_label = (
+    T["manual_paste"]
+    if st.session_state.get("article_source") == "paste"
+    else T["loaded_url_source"]
 )
+
+st.caption(f"{T['text_source']} : {source_label}")
+
+if st.session_state.get("loaded_url"):
+    st.caption(f"URL : {st.session_state.loaded_url}")
 
 if "last_result" not in st.session_state:
     st.session_state.last_result = None
@@ -1534,6 +1587,12 @@ if "last_article" not in st.session_state:
 
 if "ai_summary" not in st.session_state:
     st.session_state.ai_summary = ""
+
+if "multi_results" not in st.session_state:
+    st.session_state.multi_results = []
+
+if "last_keyword" not in st.session_state:
+    st.session_state.last_keyword = ""
 
 # -----------------------------
 # Main analysis
@@ -1607,11 +1666,59 @@ if result:
     st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")
 
     fig_triangle = plot_cognitive_triangle_3d(
-    result["G"],
-    result["N"],
-    result["D"]
-)
+        result["G"],
+        result["N"],
+        result["D"]
+    )
     st.pyplot(fig_triangle, use_container_width=True)
+
+    st.subheader("Cognitive Metrics")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("Mécroyance Index (M)", round(result["M"], 2))
+
+    with col2:
+        st.metric("Mendacity Index (ME)", round(result["ME"], 2))
+    delta_mm = round(result["M"] - result["ME"], 2)
+    st.caption(f"Cognitive gap (M − ME) : {delta_mm}")
+    if result["M"] > result["ME"] + 1:
+        dominant_pattern = "Dominant pattern: mécroyance"
+    elif result["ME"] > result["M"] + 1:
+        dominant_pattern = "Dominant pattern: strategic lying"
+    else:
+        dominant_pattern = "Dominant pattern: mixed or ambiguous"
+
+    st.subheader("Dominant cognitive pattern")
+    st.write(dominant_pattern)
+
+    if result["ME"] > result["M"] and result["ME"] > 0:
+        cognitive_type = "Possible strategic lying"
+    elif result["M"] < 0:
+        cognitive_type = "High mécroyance / cognitive closure"
+    else:
+        cognitive_type = "Likely sincere but misaligned cognition"
+
+    st.subheader("Cognitive Interpretation")
+    st.write(cognitive_type)
+
+    if result["M"] - result["ME"] > 3:
+        diagnosis = "Strong mécroyance structure"
+    elif result["M"] > result["ME"]:
+        diagnosis = "Moderate mécroyance structure"
+    elif abs(result["M"] - result["ME"]) <= 1:
+        diagnosis = "Ambiguous cognitive structure"
+    else:
+        diagnosis = "Possible strategic deception"
+
+    st.subheader("Cognitive diagnosis")
+    st.write(diagnosis)
+    conflict = abs(result["M"] - result["ME"])
+    conflict_bar = min(conflict / 10, 1)
+
+    st.write("Cognitive tension (mécroyance vs mendacity)")
+    st.progress(conflict_bar)
 
     with st.expander(T["strengths_detected"], expanded=True):
         if result["strengths"]:

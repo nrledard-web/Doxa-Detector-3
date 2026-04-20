@@ -1059,6 +1059,9 @@ class Claim:
     verifiability: float
     risk: float
     status: str
+    claim_types: List[str]
+    epistemic_note: str
+    short_adjustment: float
 
 
 SOURCE_CUES = [
@@ -1168,6 +1171,121 @@ def contains_term(text: str, term: str) -> bool:
     else:
         pattern = rf"\b{escaped}\b"
     return re.search(pattern, text.lower()) is not None
+
+def classify_claim_type(sentence: str) -> List[str]:
+    s = sentence.lower().strip()
+    claim_types = []
+
+    # normatif
+    normative_terms = [
+        "injuste", "immoral", "honteux", "scandaleux", "légitime",
+        "illégitime", "dangereux", "toxique", "acceptable", "inacceptable",
+        "raciste", "xénophobe", "fasciste", "complotiste"
+    ]
+    if any(contains_term(s, term) for term in normative_terms):
+        claim_types.append("normative")
+
+    # interprétatif
+    interpretative_terms = [
+        "révèle", "montre que", "signifie", "traduit", "témoigne de",
+        "indique que", "laisse penser", "semble montrer", "suggère que"
+    ]
+    if any(contains_term(s, term) for term in interpretative_terms):
+        claim_types.append("interpretative")
+
+    # testimonial
+    testimonial_patterns = [
+        r"\bje\b", r"\bj'ai\b", r"\bmon quartier\b", r"\bchez moi\b",
+        r"\bnous avons vu\b", r"\bj'ai vu\b", r"\bj'ai constaté\b"
+    ]
+    if any(re.search(p, s) for p in testimonial_patterns):
+        claim_types.append("testimonial")
+
+    # causal
+    causal_terms = [
+        "à cause de", "en raison de", "provoque", "entraîne",
+        "explique", "cause", "responsable de", "conduit à"
+    ]
+    if any(contains_term(s, term) for term in causal_terms):
+        claim_types.append("causal")
+
+    # prédictif
+    predictive_terms = [
+        "va", "va être", "sera", "seront", "d'ici", "bientôt",
+        "finira par", "dans les années à venir"
+    ]
+    if any(contains_term(s, term) for term in predictive_terms):
+        claim_types.append("predictive")
+
+    # généralisant
+    generalizing_terms = [
+        "toujours", "jamais", "tous", "tout le monde", "personne",
+        "aucun", "les médias", "les élites", "les politiciens"
+    ]
+    if any(contains_term(s, term) for term in generalizing_terms):
+        claim_types.append("generalizing")
+
+    # factuel quantifié
+    if re.search(r"\d+(?:[.,]\d+)?%?", s):
+        claim_types.append("quantitative")
+
+    # si rien
+    if not claim_types:
+        claim_types.append("factual_or_undetermined")
+
+    return unique_keep_order(claim_types)
+
+
+def compute_sentence_red_flags(sentence: str) -> List[str]:
+    s = sentence.lower()
+    flags = []
+
+    if any(contains_term(s, t) for t in ["toujours", "jamais", "tout le monde", "aucun"]):
+        flags.append("generalization")
+
+    if any(contains_term(s, t) for t in ["cela prouve que", "cela montre que", "à cause de", "donc forcément"]):
+        flags.append("false_causality")
+
+    if any(contains_term(s, t) for t in ["il est évident que", "sans aucun doute", "il est certain que"]):
+        flags.append("absolute_certainty")
+
+    if any(contains_term(s, t) for t in ["on nous cache", "ils veulent", "complot", "plan caché"]):
+        flags.append("hidden_intent")
+
+    if any(contains_term(s, t) for t in ["invasion", "submersion", "trahison", "ennemi du peuple"]):
+        flags.append("propaganda")
+
+    return unique_keep_order(flags)
+
+
+def small_claim_epistemic_adjustment(sentence: str, claim_types: List[str], sentence_red_flags: List[str], absolutism: int) -> tuple[float, str]:
+    words = len(sentence.split())
+
+    severe_flags = {
+        "generalization",
+        "false_causality",
+        "absolute_certainty",
+        "hidden_intent",
+        "propaganda",
+    }
+
+    if words > 18:
+        return 0.0, ""
+
+    if any(flag in severe_flags for flag in sentence_red_flags):
+        return 0.0, ""
+
+    if absolutism >= 2:
+        return 0.0, ""
+
+    if "normative" in claim_types:
+        return 2.0, "Jugement normatif : ne doit pas être pénalisé comme un fait brut."
+    if "interpretative" in claim_types:
+        return 1.5, "Affirmation interprétative : demande contexte et pluralité de lectures."
+    if "testimonial" in claim_types:
+        return 1.2, "Affirmation testimoniale : valeur vécue reconnue, sans portée générale automatique."
+
+    return 0.0, ""
 
 # -----------------------------
 # Cohérence discursive / nouveaux modules
@@ -2485,8 +2603,11 @@ def analyze_claim(sentence: str) -> Claim:
     has_named_entity = bool(re.search(r"[A-Z][a-z]+ [A-Z][a-z]+|[A-Z]{2,}", sentence))
     has_source_cue = any(cue in s for cue in SOURCE_CUES)
 
-    absolutism = sum(1 for word in ABSOLUTIST_WORDS if word in s)
-    emotional_charge = sum(1 for word in EMOTIONAL_WORDS if word in s)
+    absolutism = sum(1 for word in ABSOLUTIST_WORDS if contains_term(s, word))
+    emotional_charge = sum(1 for word in EMOTIONAL_WORDS if contains_term(s, word))
+
+    claim_types = classify_claim_type(sentence)
+    sentence_red_flags = compute_sentence_red_flags(sentence)
 
     # Vérifiabilité brute
     v_score = clamp(
@@ -2524,7 +2645,20 @@ def analyze_claim(sentence: str) -> Claim:
         10
     )
 
-    v_score = clamp(v_score - normative_penalty, 0, 20)
+    # On ne pénalise plus de la même manière les énoncés
+    # normatifs / interprétatifs / testimoniaux
+    if not any(t in claim_types for t in ["normative", "interpretative", "testimonial"]):
+        v_score = clamp(v_score - normative_penalty, 0, 20)
+
+    # Correctif petites phrases non mensongères
+    short_adjustment, epistemic_note = small_claim_epistemic_adjustment(
+        sentence,
+        claim_types,
+        sentence_red_flags,
+        absolutism
+    )
+
+    v_score = clamp(v_score + short_adjustment, 0, 20)
 
     if v_score < 5:
         status = T["very_fragile"]
@@ -2544,6 +2678,9 @@ def analyze_claim(sentence: str) -> Claim:
         verifiability=v_score,
         risk=r_score,
         status=status,
+        claim_types=claim_types,
+        epistemic_note=epistemic_note,
+        short_adjustment=short_adjustment,
     )
 
 def compute_red_flag_penalties(metrics: dict) -> dict:
@@ -2751,6 +2888,12 @@ def analyze_article(text: str) -> Dict:
         - (0.16 * D + 0.12 * R + 0.18 * avg_claim_risk + penalties["credibility_penalty"])
     )
     hard_fact_score = round(clamp(hard_fact_score_raw + 8, 0, 20), 1)
+    short_epistemic_bonus = 0.0
+    if claims:
+        short_epistemic_bonus = sum(c.short_adjustment for c in claims) / len(claims)
+        short_epistemic_bonus = min(short_epistemic_bonus, 1.5)
+
+    hard_fact_score = round(clamp(hard_fact_score + short_epistemic_bonus, 0, 20), 1)
 
     if hard_fact_score < 6:
         verdict = T["low_credibility"]
@@ -2761,8 +2904,6 @@ def analyze_article(text: str) -> Dict:
     else:
         verdict = T["strong_credibility"]
 
-    if short_form_analysis["is_short_form"]:
-        hard_fact_score = round(clamp(hard_fact_score - 1.5, 0, 20), 1)
     if hard_fact_score < 6:
         verdict = T["low_credibility"]
     elif hard_fact_score < 10:
@@ -4611,9 +4752,12 @@ if result:
         [
             {
                 T["claim"]: c.text,
+                "Type": ", ".join(c.claim_types),
                 T["status"]: c.status,
                 f"{T['verifiability']} /20": c.verifiability,
                 f"{T['risk']} /20": c.risk,
+                "Ajustement": c.short_adjustment,
+                "Note épistémique": c.epistemic_note,
                 T["number"]: T["yes"] if c.has_number else T["no"],
                 T["date"]: T["yes"] if c.has_date else T["no"],
                 T["named_entity"]: T["yes"] if c.has_named_entity else T["no"],

@@ -7050,11 +7050,11 @@ Les discours philosophiques, moraux ou spéculatifs obtiennent souvent des score
 
 
     def show_word_lists_help():
-        with st.popover("ℹ️ Rôle des listes de mots"):
+        with st.popover("ℹ️ Rôle de la heuristique et des coefficients"):
             st.markdown("""
 ### Comment certaines jauges lisent le texte
 
-Certaines jauges ne cherchent pas à “comprendre” le texte comme un humain.
+Certaines jauges ne cherchent pas à “comprendre” le texte comme un humain. Elles n'ont pas besoin de sémantique. Aucune définition n'est nécessaire.
 
 Elles repèrent des mots ou expressions associés à une charge émotionnelle, rhétorique ou cognitive, et analysent leur contexte d’utilisation.
 
@@ -7065,6 +7065,24 @@ plus il y a de mots marqués, plus les jauges s’allument.
 Cependant, ces signaux sont modulés par leur environnement (négation, atténuation, intensification), ce qui permet une lecture plus nuancée.
 
 ---
+
+Rôle des coefficients
+
+Tous les signaux détectés ne sont pas équivalents.
+
+Chaque type de marqueur est pondéré par un coefficient, qui ajuste son impact dans le calcul final.
+
+Ces coefficients permettent :
+
+de donner plus de poids à certains signaux (ex : propagande, certitude forte, asymétrie) de limiter l’impact de signaux faibles ou ambigus d’équilibrer les différentes dimensions du langage (émotion, logique, structure, idéologie)
+
+👉 Un mot ou une structure n’a donc pas un effet brut : il est intégré dans un système pondéré qui reflète son importance relative.
+
+Les coefficients ne sont pas aléatoires : ils sont calibrés pour produire une lecture cohérente du discours, en tenant compte :
+
+de la fréquence des signaux de leur intensité de leur rôle dans la construction du raisonnement
+
+👉 Autrement dit : ce ne sont pas les mots seuls qui comptent, mais leur poids dans l’ensemble du système.
 
 Ce que ces jauges détectent réellement
 
@@ -7714,10 +7732,21 @@ else:
     pass
     
     st.markdown("""
-<div style="text-align:center; margin:25px 0; color:#888;">
-────────── ✦ ──────────
-</div>
-""", unsafe_allow_html=True)
+    <div style="text-align:center; margin:25px 0; color:#888;">
+    ────────── ✦ ──────────
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <h3 style="text-align:center;">VERDICT FINAL</h3>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="text-align:center; margin:25px 0; color:#888;">
+    ────────── ✦ ──────────
+    </div>
+    """, unsafe_allow_html=True)
+
 
     # =============================
     # Barre de crédibilité finale

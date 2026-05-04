@@ -19,6 +19,67 @@ try:
 except Exception:
     client = None
 
+import math
+
+NEGATIONS = {"pas", "aucun", "jamais", "ni", "rien"}
+ATTENUATORS = {"peut-être", "semble", "probable", "possible"}
+INTENSIFIERS = {"grave", "extrême", "massif", "violent"}
+
+def tokenize(text):
+    return re.findall(r"\b[\wà-ÿ'-]+\b", text.lower())
+
+def compute_emotional_score(text, emotion_dict):
+    words = tokenize(text)
+    total_score = 0.0
+    word_count = len(words)
+
+    for i, word in enumerate(words):
+
+        # gestion simple du pluriel
+        base_word = word.rstrip("s")
+
+        if base_word in emotion_dict:
+            base_weight = emotion_dict[base_word]
+            modifier = 1.0
+
+            # fenêtre locale
+            context = words[max(0, i-2):i+3]
+
+            context_set = set(context)
+
+            # négation
+            if context_set & NEGATIONS:
+                modifier *= 0.2
+
+            # atténuation
+            if context_set & ATTENUATORS:
+                modifier *= 0.6
+
+            # intensification
+            if context_set & INTENSIFIERS:
+                modifier *= 1.4
+
+            total_score += base_weight * modifier
+
+    # normalisation + stabilisation
+    score = total_score / (math.log(1 + word_count) + 1)
+
+    return min(score, 1.0)
+
+st.markdown("""
+<style>
+
+div[data-testid="stMetricValue"] {
+    font-size: 36px !important;
+}
+
+div[data-testid="stMetricLabel"] {
+    font-size: 20px !important;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
 # -----------------------------
 # Mots grammaticaux ignorés
 # -----------------------------
@@ -463,6 +524,12 @@ client = get_openai_client()
 # -----------------------------
 # Header
 # -----------------------------
+st.markdown("""
+<h1 style="text-align:center; font-size:36px;">
+De la logique d’Aristote aux équations du discours
+</h1>
+""", unsafe_allow_html=True)
+
 st.markdown(
     """
 **DOXA Detector analyse la structure cognitive des discours grâce à un moteur analytique fondé sur des équations, des heuristiques linguistiques et des fonctions de calcul.**
@@ -479,7 +546,10 @@ st.markdown(
 """
 )
 
-st.divider()
+st.markdown(
+    "<div style='border-top:1px solid #e6e6e6;margin:22px 0'></div>",
+    unsafe_allow_html=True
+)
 
 with st.container(border=True):
 
@@ -538,7 +608,10 @@ st.link_button(
     use_container_width=True
 )
 
-st.divider()
+st.markdown(
+    "<div style='border-top:1px solid #e6e6e6;margin:22px 0'></div>",
+    unsafe_allow_html=True
+)
 
 
 # -----------------------------
@@ -1051,15 +1124,17 @@ def compute_rhetorical_pressure(results: dict) -> float:
 def interpret_rhetorical_pressure(value: float):
     """
     Traduit la pression rhétorique en étiquette + couleur.
+    Jauge de vigilance : même faible, elle ne devient pas verte.
     """
     if value < 0.20:
-        return "Faible", "#16a34a"
+        return "Faible", "#ca8a04"      # jaune / ocre
     elif value < 0.40:
-        return "Modérée", "#ca8a04"
+        return "Modérée", "#f97316"    # orange
     elif value < 0.70:
-        return "Élevée", "#f97316"
+        return "Élevée", "#ea580c"     # orange foncé
     else:
-        return "Très élevée", "#dc2626"
+        return "Très élevée", "#dc2626" # rouge
+        
 
 def compute_cognitive_gravity(result):
     """
@@ -1117,17 +1192,18 @@ def compute_propaganda_gauge(
 def interpret_propaganda_gauge(value: float):
     """
     Traduit l'indice propagandiste en étiquette + couleur + commentaire.
+    Même faible, la jauge reste une vigilance (pas de vert).
     """
     if value < 0.20:
-        return "Très faible", "#16a34a", "Le texte ne présente pas de structure propagandiste marquée."
+        return "Très faible", "#ca8a04", "Le texte ne présente pas de structure propagandiste marquée."
     elif value < 0.40:
-        return "Faible", "#84cc16", "Le discours peut orienter légèrement la perception, sans verrouillage fort."
+        return "Faible", "#f97316", "Le discours peut orienter légèrement la perception, sans verrouillage fort."
     elif value < 0.60:
-        return "Modéré", "#ca8a04", "Le texte contient plusieurs éléments compatibles avec une mise en orientation du lecteur."
+        return "Modéré", "#ea580c", "Le texte contient plusieurs éléments compatibles avec une mise en orientation du lecteur."
     elif value < 0.80:
-        return "Élevé", "#f97316", "Le discours semble fortement orienté et cherche à imposer un cadrage interprétatif."
+        return "Élevé", "#dc2626", "Le discours semble fortement orienté et cherche à imposer un cadrage interprétatif."
     else:
-        return "Très élevé", "#dc2626", "Le texte présente une structure fortement propagandiste ou de verrouillage idéologique."
+        return "Très élevé", "#7f1d1d", "Le texte présente une structure fortement propagandiste ou de verrouillage idéologique."
 
 def interpret_discursive_profile(
     lie_gauge: float,
@@ -1357,6 +1433,7 @@ def search_articles_by_keyword(keyword: str, max_results: int = 10) -> List[Dict
         clean_keyword = keyword.strip()
 
         core_query = clean_keyword.lower()
+        core_query = core_query.replace(" wiki", "").replace(" wikipedia", "").strip()
 
         for article_word in ["le ", "la ", "les ", "un ", "une ", "des "]:
             if core_query.startswith(article_word):
@@ -1395,9 +1472,16 @@ def search_articles_by_keyword(keyword: str, max_results: int = 10) -> List[Dict
             title_l = title.lower()
             url_l = url.lower()
             
-            # On garde seulement si l’expression exacte est dans le TITRE ou l’URL
-            if core_query not in title_l and core_query.replace(" ", "-") not in url_l:
-                continue
+            # Filtre souple : au moins un mot significatif dans le titre, l'extrait ou l'URL
+            query_words = [w for w in core_query.split() if len(w) > 3]
+            
+            if query_words:
+                title_hits = sum(1 for w in query_words if w in title_l)
+                snippet_hits = sum(1 for w in query_words if w in snippet.lower())
+                url_hits = sum(1 for w in query_words if w in url_l)
+            
+                if title_hits + snippet_hits + url_hits < 1:
+                    continue
 
             bad_url_parts = [
                 "/tag/",
@@ -1431,7 +1515,7 @@ def search_articles_by_keyword(keyword: str, max_results: int = 10) -> List[Dict
             if web_noise["is_noise"]:
                 continue
 
-            analysis = analyze_article(text)
+            # analysis = analyze_article(text)
 
             articles.append({
                 "title": title,
@@ -1486,7 +1570,7 @@ def compute_lie_gauge(M: float, ME: float):
         label = "Mensonge probable"
         color = "#dc2626"
     else:
-        label = "Mensonge extrême"
+        label = "Mensonge structurel détecté"
         color = "#991b1b"
 
     intensity = abs(gauge - 0.5) * 2
@@ -1720,7 +1804,41 @@ def detect_index_or_multilink_page(text: str, url: str = ""):
         "markers": marker_hits + url_hits[:10],
         "interpretation": interpretation
     }
+    
+# -----------------------------
+# Filtre anti-pages non articles
+# -----------------------------
+BAD_ARTICLE_DOMAINS = [
+    "depositphotos", "shutterstock", "gettyimages", "istockphoto",
+    "alamy", "dreamstime", "adobestock", "123rf", "pinterest",
+    "facebook", "instagram", "youtube", "tiktok",
+]
 
+BAD_ARTICLE_WORDS = [
+    "images libres de droit",
+    "photos libres de droit",
+    "stock photo",
+    "royalty free",
+    "banque d'images",
+    "current page requires javascript",
+    "javascript",
+    "connexion",
+    "créez un compte",
+    "tarifs",
+    "vidéos",
+    "musique et sons",
+]
+
+def is_bad_article_candidate(url: str = "", title: str = "", snippet: str = "") -> bool:
+    raw = f"{url} {title} {snippet}".lower()
+
+    if any(domain in raw for domain in BAD_ARTICLE_DOMAINS):
+        return True
+
+    if any(word in raw for word in BAD_ARTICLE_WORDS):
+        return True
+
+    return False
 
 # -----------------------------
 # Normalisation des termes
@@ -2741,32 +2859,33 @@ CERTAINTY_TERMS = [
     "la preuve que"
 ]
 
-EMOTIONAL_INTENSITY_TERMS = [
-    "scandale",
-    "honte",
-    "catastrophe",
-    "désastre",
-    "trahison",
-    "danger",
-    "peur",
-    "menace",
-    "crise",
-    "urgent",
-    "incroyable",
-    "terrible",
-    "révolution",
-    "effondrement",
-    "panique",
-    "massacre",
-    "destruction",
-    "panic",
-    "scandal",
-    "outrage",
-    "fear",
-    "collapse",
-    "crisis",
-    "urgent",
-]
+EMOTIONAL_DICT = {
+    "scandale": 0.6,
+    "honte": 0.5,
+    "catastrophe": 0.8,
+    "désastre": 0.75,
+    "trahison": 0.6,
+    "danger": 0.5,
+    "peur": 0.6,
+    "menace": 0.5,
+    "crise": 0.5,
+    "urgent": 0.6,
+    "incroyable": 0.35,
+    "terrible": 0.5,
+    "révolution": 0.55,
+    "effondrement": 0.7,
+    "panique": 0.7,
+    "massacre": 0.85,
+    "destruction": 0.75,
+
+    # anglais (optionnel)
+    "panic": 0.7,
+    "scandal": 0.6,
+    "outrage": 0.6,
+    "fear": 0.6,
+    "collapse": 0.7,
+    "crisis": 0.5,
+}
 # -----------------------------
 # Faux consensus
 # -----------------------------
@@ -4216,6 +4335,11 @@ def detect_aristotelian_fallacies(text: str):
         "argument_from_nature": argument_from_nature,
         "descriptive_normative_confusion": descriptive_normative_confusion,
     }
+
+    return {
+        "descriptive_normative_confusion": descriptive_normative_confusion,
+    }
+
 def compute_brain_indices(result: dict) -> dict:
     def clamp01(x):
         return max(0.0, min(1.0, x))
@@ -4282,15 +4406,57 @@ def compute_brain_indices(result: dict) -> dict:
     else:
         profile = "Structure mixte ou ambiguë"
 
+    # -----------------------------
+    # Stabilité / gravité du cerveau DOXA
+    # avec impact modulé du mensonge
+    # -----------------------------
+
+    cognitive_density = clamp01((G + N) / 20)
+
+    lie_gauge = result.get("lie_gauge", strategic_index)
+    if lie_gauge > 1:
+        lie_gauge = lie_gauge / 100
+
+    lie_impact = lie_gauge * (1 - cognitive_density)
+
+    gravity = clamp01(
+        strategic_index * 0.35 +
+        closure_index * 0.30 +
+        IR * 0.20 +
+        lie_impact * 0.40
+    )
+
+    stability = clamp01(
+        1 -
+        (
+            gravity * 0.60 +
+            closure_index * 0.25 +
+            lie_impact * 0.30
+        )
+    )
+    secondary_pressure = compute_secondary_alert_pressure(result)
+    
+    gravity = min(1.0, gravity + secondary_pressure * 0.45)
+    stability = max(0.0, stability - secondary_pressure * 0.35)
+
     return {
         "IR": round(IR, 3),
         "IL": round(IL, 3),
         "IC": round(IC, 3),
         "strategic_index": round(strategic_index, 3),
         "closure_index": round(closure_index, 3),
+        "lie_impact": round(lie_impact, 3),
+    
+        # anciennes clés si utilisées ailleurs
+        "gravity": round(gravity, 3),
+        "stability": round(stability, 3),
+    
+        "cognitive_gravity": round(gravity, 3),
+        "cognitive_stability": round(stability, 3),
+    
         "brain_profile": profile,
     }
-    
+      
 def analyze_claim(sentence: str) -> Claim:
     s = sentence.lower()
 
@@ -4510,14 +4676,25 @@ def compute_red_flag_penalties(metrics: dict) -> dict:
     }
 
 def compute_cognitive_drifts(G, N, D):
-    drift_mecroyance = max(0, D - (G + N))
+    M = (G + N) - D
+
+    drift_mecroyance = max(0, -M)
     drift_pseudo_savoir = max(0, (G + D) - N)
     drift_intuition_dogmatique = max(0, (N + D) - G)
 
-    global_drift = round(
-        (drift_mecroyance + drift_pseudo_savoir + drift_intuition_dogmatique) / 3,
-        2
+    dominant_value = max(
+        drift_mecroyance,
+        drift_pseudo_savoir,
+        drift_intuition_dogmatique
     )
+
+    average_value = (
+        drift_mecroyance +
+        drift_pseudo_savoir +
+        drift_intuition_dogmatique
+    ) / 3
+
+    global_drift = round(dominant_value * 0.6 + average_value * 0.4, 2)
 
     values = {
         "mecroyance": round(drift_mecroyance, 2),
@@ -4592,27 +4769,27 @@ def compute_global_penalties(result: dict) -> dict:
     penalty += min(red_flags_count * 0.25, 2.0)
 
     # 2) Dérives discursives déjà calculées
-    penalty += result.get("normative_score", 0) * 0.8
-    penalty += result.get("premise_score", 0) * 1.0
-    penalty += result.get("propaganda_score", 0) * 1.2
-    penalty += result.get("logic_confusion_score", 0) * 1.0
-    penalty += result.get("scientific_simulation_score", 0) * 0.8
-
+    penalty += result.get("normative_score", 0) * 0.6
+    penalty += result.get("premise_score", 0) * 0.7
+    penalty += result.get("propaganda_score", 0) * 0.8
+    penalty += result.get("logic_confusion_score", 0) * 0.7
+    penalty += result.get("scientific_simulation_score", 0) * 0.6
+    
     # 3) Sophismes simples
-    penalty += result.get("petition_score", 0) * 0.8
-    penalty += result.get("false_causality_basic_score", 0) * 0.9
-    penalty += result.get("hasty_generalization_score", 0) * 0.8
-    penalty += result.get("false_dilemma_score", 0) * 0.8
-
+    penalty += result.get("petition_score", 0) * 0.5
+    penalty += result.get("false_causality_basic_score", 0) * 0.6
+    penalty += result.get("hasty_generalization_score", 0) * 0.5
+    penalty += result.get("false_dilemma_score", 0) * 0.5
+    
     # 4) Verrouillage / manipulation
-    penalty += result.get("doxic_rigidity_score", 0) * 1.0
-    penalty += result.get("narrative_overdetermination_score", 0) * 0.9
-    penalty += result.get("moral_polarization_score", 0) * 0.8
-    penalty += result.get("strategic_simplification_score", 0) * 0.8
-    penalty += result.get("argument_asymmetry_score", 0) * 0.7
-
-    # Plafond pour éviter de casser artificiellement le score
-    penalty = round(min(penalty, 6.0), 2)
+    penalty += result.get("doxic_rigidity_score", 0) * 0.7
+    penalty += result.get("narrative_overdetermination_score", 0) * 0.6
+    penalty += result.get("moral_polarization_score", 0) * 0.6
+    penalty += result.get("strategic_simplification_score", 0) * 0.6
+    penalty += result.get("argument_asymmetry_score", 0) * 0.5
+    
+    # Plafond plus doux
+    penalty = round(min(penalty, 4.0), 2)
 
     if penalty < 1:
         label = "Faible"
@@ -4633,6 +4810,24 @@ def compute_global_penalties(result: dict) -> dict:
         "penalty_interpretation": interpretation,
         "red_flags_penalty_count": red_flags_count,
     }
+
+def compute_secondary_alert_pressure(result: dict) -> float:
+    signals = [
+        result.get("propaganda_score", 0) * 1.4,
+        result.get("argument_asymmetry_score", 0) * 1.2,
+        result.get("emotional_intensity_score", 0) * 1.0,
+        result.get("normative_score", 0) * 1.1,
+        result.get("premise_score", 0) * 1.1,
+        result.get("coherence_trompeuse_score", 0) * 1.3,
+        result.get("logic_confusion_score", 0) * 1.0,
+        result.get("scientific_simulation_score", 0) * 1.0,
+        result.get("hasty_generalization_score", 0) * 1.0,
+        result.get("false_dilemma_score", 0) * 0.9,
+        result.get("dissonance_score", 0) * 1.2,
+    ]
+
+    pressure = sum(signals) / 12
+    return round(min(pressure, 1.0), 3)
 
 def compute_doxa_brain(result: dict) -> dict:
     """
@@ -4800,6 +4995,23 @@ def color_scale_quality(value: float) -> tuple[str, str]:
         return "#ca8a04", "🟡 Correct"
     else:
         return "#16a34a", "🟢 Robuste"
+        
+
+def color_scale_warning_risk(value: float) -> tuple[str, str]:
+    """
+    Pour les jauges de risque sensible :
+    même faible, le signal reste une vigilance, pas une structure saine.
+    """
+    v = normalize_display_value(value)
+
+    if v < 0.25:
+        return "#ca8a04", "🟡 Faible"
+    elif v < 0.50:
+        return "#f97316", "🟠 Modéré"
+    elif v < 0.75:
+        return "#ea580c", "🟠 Élevé"
+    else:
+        return "#dc2626", "🔴 Critique"
 
 
 def interpret_generic_risk_gauge(label: str, value: float) -> str:
@@ -4811,6 +5023,11 @@ def interpret_generic_risk_gauge(label: str, value: float) -> str:
 def interpret_generic_quality_gauge(label: str, value: float) -> str:
     v = normalize_display_value(value)
     color, level = color_scale_quality(v)
+    return f"<b style='color:{color}'>{label}</b> — {level} ({round(v * 100, 1)}%)"
+
+def interpret_warning_risk_gauge(label: str, value: float) -> str:
+    v = normalize_display_value(value)
+    color, level = color_scale_warning_risk(v)
     return f"<b style='color:{color}'>{label}</b> — {level} ({round(v * 100, 1)}%)"
 
 # -------------------------------------------------
@@ -5078,7 +5295,23 @@ def analyze_article(text: str) -> Dict:
     index_page_analysis = detect_index_or_multilink_page(text)
     causal_overreach_analysis = compute_causal_overreach(text)
     vague_authority_analysis = compute_vague_authority(text)
-    emotional_intensity_analysis = compute_emotional_intensity(text)
+    emotional_score = compute_emotional_score(text, EMOTIONAL_DICT)
+    emotional_intensity_analysis = {
+        "score": emotional_score,
+        "markers": [
+            w for w in tokenize(text)
+            if w.rstrip("s") in EMOTIONAL_DICT
+        ],
+        "interpretation": (
+            "Le texte mobilise une charge émotionnelle faible."
+            if emotional_score < 0.15 else
+            "Le texte mobilise une charge émotionnelle modérée."
+            if emotional_score < 0.35 else
+            "Le texte mobilise une charge émotionnelle notable."
+            if emotional_score < 0.60 else
+            "Le texte mobilise une charge émotionnelle très forte."
+        )
+    }
     generalization_analysis = compute_generalization(text)
     abstract_enemy_analysis = compute_abstract_enemy(text)
     certainty_analysis = compute_certainty(text)
@@ -5152,17 +5385,20 @@ def analyze_article(text: str) -> Dict:
     })
 
     V = clamp(G * 0.8 + N * 0.2, 0, 10)
-
+    
+    # modulation émotion par N (nous)
+    emotional_effect = emotional_intensity_analysis["score"] * (1 - (N / 10))
+    
     R = clamp(
         (
-            D * 0.50 +
-            emotional_intensity_analysis["score"] * 10 * 0.25 +
+            D * 0.55 +
+            emotional_effect * 10 * 0.20 +
             propaganda_analysis["score"] * 10 * 0.25
         ),
         0,
         10
     )
-
+    
     improved = round((G + N + V) - (D + R), 1)
 
     # -----------------------------
@@ -5401,7 +5637,38 @@ def analyze_article(text: str) -> Dict:
         "semantic_shift_score": semantic_shift_analysis["score"],
         "doxic_rigidity_score": doxic_rigidity_analysis["score"],
         "narrative_overdetermination_score": narrative_overdetermination_analysis["score"],
+        "argument_asymmetry_score": argument_asymmetry_analysis["score"],
+        "coherence_trompeuse_score": 0,
+        "dissonance_score": internal_dissonance_analysis["score"],
     })
+    # -----------------------------
+    # Score analogique du raisonnement
+    # -----------------------------
+    logical_connectors = len(re.findall(
+        r"\b(car|donc|ainsi|cependant|pourtant|puisque|par conséquent|en effet|toutefois|néanmoins|or|mais|donc)\b",
+        text.lower()
+    ))
+
+    sentence_count = max(1, len(sentences))
+
+    connector_ratio = logical_connectors / sentence_count
+
+    contradiction_signals = len(re.findall(
+        r"\b(toujours.*sauf|jamais.*mais|certain.*pourtant|évident.*cependant|impossible.*mais)\b",
+        text.lower()
+    ))
+
+    analogical_reasoning_score = (
+        5
+        + logical_connectors * 1.8
+        + min(sentence_count, 8) * 0.35
+        - contradiction_signals * 4
+    )
+
+    analogical_reasoning_score = round(
+        clamp(analogical_reasoning_score, 0, 20),
+        1
+    )
         
     result = {
         "words": len(words),
@@ -5644,6 +5911,7 @@ def analyze_article(text: str) -> Dict:
         "final_credibility_score": final_credibility_score,
         "final_verdict": verdict,
         "hard_fact_score": hard_fact_score,
+        "analogical_reasoning_score": analogical_reasoning_score,
         "verdict": verdict,
         "profil_solidite": verdict,
         "strengths": strengths,
@@ -5876,15 +6144,19 @@ def corroborate_claims(text: str, max_claims: int = 5, max_results_per_claim: in
         with DDGS() as ddgs:
             for claim in claims:
                 query = build_search_query_from_claim(claim)
+    
                 search_results = list(ddgs.text(query, max_results=max_results_per_claim * 5))
+    
                 filtered = []
                 for r in search_results:
                     url = r.get("href", "")
                     title = r.get("title", "")
                     body = r.get("body", "")
                     combined_text = f"{title} {body}"
+    
                     if any(domain in url for domain in trusted_domains):
                         match_score = score_match_between_claim_and_result(claim, combined_text)
+    
                         filtered.append(
                             {
                                 "title": title,
@@ -5893,8 +6165,15 @@ def corroborate_claims(text: str, max_claims: int = 5, max_results_per_claim: in
                                 "match_score": match_score,
                             }
                         )
-                filtered = sorted(filtered, key=lambda x: x["match_score"]["score"], reverse=True)[:max_results_per_claim]
+    
+                filtered = sorted(
+                    filtered,
+                    key=lambda x: x["match_score"]["score"],
+                    reverse=True
+                )[:max_results_per_claim]
+    
                 verdict = classify_corroboration(filtered)
+    
                 corroboration_results.append(
                     {
                         "claim": claim,
@@ -5903,9 +6182,10 @@ def corroborate_claims(text: str, max_claims: int = 5, max_results_per_claim: in
                         "verdict": verdict,
                     }
                 )
+    
     except Exception as e:
         st.warning(f"Erreur de corroboration : {e}")
-
+    
     return corroboration_results
 
 
@@ -6021,44 +6301,6 @@ def fetch_text_for_textarea(url: str) -> str:
         return ""
 
 # =====================================================
-# AIDE DE LECTURE DES JAUGES
-# =====================================================
-def show_gauge_help():
-    with st.expander("📘 Comment lire les jauges", expanded=False):
-        st.markdown("""
-Chaque jauge mesure un mécanisme du discours : raisonnement, pression rhétorique, biais argumentatifs ou degré de certitude.
-
-Les jauges n’indiquent pas si un texte est vrai ou faux, mais **la solidité de sa structure cognitive**.
-
-- 🟢 **Vert** → structure saine ou raisonnement solide
-- 🟠 **Orange** → fragilité, raisonnement incomplet ou insuffisamment démontré
-- 🔴 **Rouge** → dérive cognitive importante ou manipulation possible
-
-**Les textes les plus solides sont ceux qui allument le moins de jauges, ou qui restent majoritairement dans le vert.**
-
----
-
-### Poids des jauges
-
-Toutes les jauges n’ont pas la même influence sur le résultat final.
-
-Certaines jauges structurelles ont un **coefficient plus élevé**, car elles signalent des problèmes fondamentaux dans le raisonnement.
-
-**Une petite jauge avec un coefficient élevé peut peser autant qu’une grande jauge secondaire.**
-
-Le score final dépend donc **à la fois de l’intensité des jauges et de leur poids dans l’analyse.**
-
----
-
-### Important
-
-Un texte peut être **cohérent sans être démonstratif**.
-
-Les discours philosophiques, moraux ou spéculatifs obtiennent souvent des scores intermédiaires, car ils reposent davantage sur des idées générales que sur des faits vérifiables.
-""")
-
-
-# =====================================================
 # TYPE DE DISCOURS DÉTECTÉ
 # =====================================================
 def detect_discourse_type(result):
@@ -6151,12 +6393,42 @@ def detect_web_noise(text):
         )
     }
 # -----------------------------
-# Réglages
+# Réglages et méthode de recherche
 # -----------------------------
-with st.expander(T["settings"], expanded=False):
-    use_sample = st.button(T["load_example"])
-    show_method = st.toggle(T["show_method"], value=True)
-    st.divider()
+with st.expander("⚙️ Réglages et méthode de recherche", expanded=False):
+    use_sample = st.button(
+        T["load_example"],
+        key="settings_load_example"
+    )
+
+    show_method = st.toggle(
+        T["show_method"],
+        value=True,
+        key="settings_show_method"
+    )
+
+    st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
+
+    st.markdown("""
+### Principe de sélection des articles — basé sur la formule :
+M = (G + N) − D
+
+⚠️ Le système ne classe pas les articles uniquement par popularité ou par mots-clés.
+Il privilégie les textes dont la structure argumentative active l’analyse cognitive.
+
+**Textes fortement affirmatifs**  
+Les discours très affirmatifs ou rhétoriquement chargés déclenchent davantage de signaux analytiques.
+
+**⚙️ Filtrage automatique**  
+**Si 10 textes fortement affirmatifs sont déjà détectés, les articles plus neutres peuvent ne pas apparaître dans l’analyse.
+
+**⬇️ Important**
+**Lorsque vous effectuez le chargement d’un article, descendez jusqu’au bloc “Texte chargé” afin de lancer l’analyse.
+""")
 
 if "article" not in st.session_state:
     st.session_state.article = SAMPLE_ARTICLE
@@ -6250,42 +6522,48 @@ if not st.session_state.get("direct_search_result_mode"):
         st.warning(T["no_exploitable_articles_found"])
 
 # =============================
-# Sources réseaux sociaux
+# Chargement d’une page publique par URL
 # =============================
-st.markdown("### Analyser une publication publique")
-
-social_url = st.text_input(
-    "Lien X, LinkedIn, Medium, ou autre page publique",
-    key="social_url_input"
+st.markdown("### Analyser une page publique par URL")
+st.caption(
+    "Collez le lien d’un article, d’un post X, LinkedIn, Medium ou toute autre page publique."
 )
 
-if st.button("📥 Charger depuis un réseau social", use_container_width=True):
+page_url = st.text_input(
+    "Lien de la page publique à analyser",
+    key="page_url_input"
+)
 
-    if social_url.strip():
+if st.button("📥 Charger la page", use_container_width=True):
 
-        texte_social = extract_article_from_url(social_url.strip())
+    if page_url.strip():
 
-        if texte_social:
-            st.session_state.article = texte_social
-            st.session_state.article_source = "social_url"
-            st.session_state.loaded_url = social_url.strip()
-            st.session_state.loaded_article_title = "Publication publique"
+        texte_page = extract_article_from_url(page_url.strip())
+
+        if texte_page:
+            st.session_state.article = texte_page
+            st.session_state.article_source = "page_url"
+            st.session_state.loaded_url = page_url.strip()
+            st.session_state.loaded_article_title = "Page publique"
             st.session_state.article_loaded_from_search = True
 
-            st.success("Publication chargée. Vous pouvez l’analyser juste ici.")
+            st.success("Page chargée. Vous pouvez l’analyser juste ici.")
             st.rerun()
 
         else:
             st.warning(
                 "Impossible de récupérer automatiquement le texte. "
-                "Ce réseau social bloque probablement l’accès. "
-                "Copiez-collez le texte du post ou du commentaire dans la zone d’analyse."
+                "La page bloque peut-être l’accès ou ne contient pas de texte exploitable. "
+                "Copiez-collez alors le texte directement dans la zone d’analyse."
             )
 
     else:
-        st.warning("Collez d’abord un lien de publication.")
+        st.warning("Collez d’abord un lien.")
 
-if st.session_state.get("article_loaded_from_search") and st.session_state.get("article_source") == "social_url":
+if (
+    st.session_state.get("article_loaded_from_search")
+    and st.session_state.get("article_source") == "page_url"
+):
 
     st.markdown("### 📰 Texte chargé")
     st.success("Le texte est prêt à être analysé.")
@@ -6296,7 +6574,7 @@ if st.session_state.get("article_loaded_from_search") and st.session_state.get("
             value=st.session_state.get("article", ""),
             height=260,
             disabled=True,
-            key="social_article_preview"
+            key="page_article_preview"
         )
 
     if st.button("🔎 Analyser ce texte maintenant", use_container_width=True):
@@ -6304,28 +6582,6 @@ if st.session_state.get("article_loaded_from_search") and st.session_state.get("
         st.session_state.last_article = st.session_state.article
         st.session_state.article_loaded_from_search = False
         st.rerun()
-
-# -----------------------------
-# Chargement URL
-# -----------------------------
-with st.form("url_form"):
-    url = st.text_input(T["url"])
-    load_url_submitted = st.form_submit_button(T["load_url"])
-
-if load_url_submitted:
-    if url:
-        texte = extract_article_from_url(url)
-        if texte:
-            st.session_state.article = texte
-            st.session_state.article_source = "url"
-            st.session_state.loaded_url = url
-            st.session_state.mode = "Analyse simple"
-            st.success(T["article_loaded_from_url"])
-            st.rerun()
-        else:
-            st.error(T["unable_to_retrieve_text"])
-    else:
-        st.warning(T["paste_url_first"])
 
 # =============================
 # Mode résultat direct depuis recherche
@@ -6689,27 +6945,6 @@ if mode == "Débat dynamique":
             )
 
     st.stop()
-    
-# -----------------------------
-# Mode sémantique
-# -----------------------------
-if "semantic_mode" not in st.session_state:
-    st.session_state.semantic_mode = False
-
-st.markdown("### Analyse sémantique")
-st.caption("Active une lecture du sens des affirmations via un dictionnaire sémantique assisté par IA.")
-
-if st.button(
-    "Activer l’analyse sémantique",
-    key="semantic_normal",
-    use_container_width=True
-):
-    st.session_state.semantic_mode = True
-
-if st.session_state.semantic_mode:
-    st.success("Analyse sémantique activée.")
-else:
-    st.info("Analyse sémantique inactive. La crédibilité globale reste partielle.")
 
 
 # -----------------------------
@@ -6768,162 +7003,896 @@ if analyze_submitted:
 result = st.session_state.last_result
 article_for_analysis = st.session_state.last_article
 
+if not result:
+    st.stop()
+
 if result:
 
-    # =============================
-    # Barre de raisonnement
-    # =============================
-    score = result.get("hard_fact_score", 0)
+# =====================================================
+# AIDE DE LECTURE DES JAUGES
+# =====================================================
+
+    def show_gauge_help():
+        with st.expander("📘 Comment lire les jauges", expanded=False):
+            st.markdown("""
+Chaque jauge mesure un mécanisme du discours : raisonnement, pression rhétorique, biais argumentatifs ou degré de certitude.
+
+Les jauges n’indiquent pas si un texte est vrai ou faux, mais **la solidité de sa structure cognitive**.
+
+- 🟢 **Vert** → structure saine ou raisonnement solide
+- 🟡 **Jaune** → vigilance modérée ou raisonnement partiellement fragile
+- 🟠 **Orange** → fragilité importante, raisonnement incomplet ou insuffisamment démontré
+- 🔴 **Rouge** → dérive cognitive importante ou manipulation possible
+- 🟤 **Marron clair** → mécanisme d’analyse cognitive
+
+**Les textes les plus solides sont ceux qui allument le moins de jauges, ou qui restent majoritairement dans le vert.**
+
+---
+
+### Poids des jauges
+
+Toutes les jauges n’ont pas la même influence sur le résultat final.
+
+Certaines jauges structurelles ont un **coefficient plus élevé**, car elles signalent des problèmes fondamentaux dans le raisonnement.
+
+**Une jauge secondaire à fort coefficient peut peser autant qu’une jauge plus visible.**
+
+Le score final dépend donc **à la fois de l’intensité des jauges et de leur poids dans l’analyse.**
+
+---
+
+### Important
+
+Un texte peut être **cohérent sans être démonstratif**.
+
+Les discours philosophiques, moraux ou spéculatifs obtiennent souvent des scores intermédiaires.
+""")
+
+
+    def show_word_lists_help():
+        with st.popover("ℹ️ Rôle des listes de mots"):
+            st.markdown("""
+### Comment certaines jauges lisent le texte
+
+Certaines jauges ne cherchent pas à “comprendre” le texte comme un humain.
+
+Elles repèrent des mots ou expressions associés à une charge émotionnelle, rhétorique ou cognitive, et analysent leur contexte d’utilisation.
+
+Chaque mot agit comme un signal :
+
+plus il y a de mots marqués, plus les jauges s’allument.
+
+Cependant, ces signaux sont modulés par leur environnement (négation, atténuation, intensification), ce qui permet une lecture plus nuancée.
+
+---
+
+Ce que ces jauges détectent réellement
+
+Elles ne disent pas si le texte est vrai ou faux.
+
+Elles mesurent :
+
+- l’intensité du langage utilisé  
+- la pression exercée sur le lecteur  
+- la manière dont les formulations orientent la perception (crise, urgence, jamais, catastrophe…)
+
+👉 Autrement dit : comment le texte cherche à faire réagir, pas ce qu’il prouve.
+
+---
+
+Exemple
+
+“Une crise majeure menace le pays” → langage chargé → les jauges montent  
+“Il n’y a pas de crise actuellement” → présence de négation → signal atténué  
+“Il semble possible qu’une crise survienne” → signal modéré par l’incertitude  
+
+---
+
+Pourquoi ce système ?
+
+Parce qu’un discours peut être :
+
+- très convaincant sans être solide  
+- très chargé sans être démontré  
+
+Ces jauges captent cette dimension.
+
+---
+
+Limite importante
+
+Elles analysent des structures linguistiques, pas une intention consciente.
+
+Elles peuvent donc :
+
+- surestimer certains textes neutres  
+- ou manquer des nuances complexes  
+
+---
+
+Comment interpréter
+
+👉 Ces jauges ne sont jamais à lire seules.
+
+Elles indiquent un niveau de pression linguistique, à croiser avec :
+
+- la solidité argumentative  
+- la vérifiabilité  
+- l’équilibre G / N / D  
+
+---
+
+Résumé
+
+➡️ Elles mesurent l’impact du langage  
+➡️ Elles intègrent partiellement le contexte  
+➡️ Elles n’évaluent pas directement la vérité du contenu
+➡️ Elles n’interprètent pas l’intention réelle de l’auteur
+""")
+
+# =====================================================
+# AFFICHAGE
+# =====================================================
     
-    if score < 6:
-        couleur_r = "🔴"
-        etiquette_r = "Très fragile"
-        message_r = "Le texte présente peu d’éléments de raisonnement structurés."
-    elif score < 9:
-        couleur_r = "🟠"
-        etiquette_r = "Fragile"
-        message_r = "Le raisonnement existe, mais reste incomplet ou insuffisamment construit."
-    elif score < 13:
-        couleur_r = "🟡"
-        etiquette_r = "Modérée"
-        message_r = "Le texte présente une structure de raisonnement cohérente, mais plusieurs affirmations restent conceptuelles ou insuffisamment démontrées."
-    elif score < 16:
-        couleur_r = "🟢"
-        etiquette_r = "Solide"
-        message_r = "Le raisonnement est structuré et globalement cohérent."
-    else:
-        couleur_r = "🟢"
-        etiquette_r = "Très solide"
-        message_r = "Le texte présente un raisonnement robuste, structuré et bien soutenu."
+    if result:
+        show_gauge_help()
+        show_word_lists_help()
+
+st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
+
+# =============================
+# Analyse analogique du raisonnement
+# =============================
+
+st.subheader("Analyse analogique du raisonnement")
+
+st.caption(
+    "Analyse analogique du raisonnement à partir des structures du langage afin d’estimer la solidité épistémique du discours."
+)
+
+real_score = result.get("final_credibility_score", result.get("hard_fact_score", 0))
+
+# Plancher VISUEL uniquement
+display_score = max(real_score, 2.0)
+display_score = min(display_score, 20.0)
+
+# Couleurs et verdict — basés sur le score affiché
+if display_score < 6:
+    score_icon = "🔴"
+    score_color = "#dc2626"
+    score_label = "Faible"
+elif display_score < 9:
+    score_icon = "🟠"
+    score_color = "#f97316"
+    score_label = "Fragile"
+elif display_score < 13:
+    score_icon = "🟡"
+    score_color = "#facc15"
+    score_label = "Modérée"
+elif display_score < 16:
+    score_icon = "🟢"
+    score_color = "#22c55e"
+    score_label = "Solide"
+else:
+    score_icon = "🟢"
+    score_color = "#15803d"
+    score_label = "Très solide"
+
+# Barre épaisse colorée
+st.markdown(f"""
+<div style="width:100%; margin-top:10px; margin-bottom:10px;">
+    <div style="
+        width:100%;
+        height:26px;
+        background:#e5e7eb;
+        border-radius:12px;
+        overflow:hidden;
+        border:1px solid #cbd5e1;
+    ">
+        <div style="
+            width:{min(display_score / 20, 1) * 100}%;
+            height:100%;
+            background:{score_color};
+            transition:width 0.4s ease;
+        "></div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown(
+    f"<b style='color:{score_color}'>Score analogique : {score_icon} {round(display_score,1)}/20 — {score_label}</b>",
+    unsafe_allow_html=True
+)
+
+if display_score < 6:
+    analogique_message = "Le raisonnement paraît faible : les enchaînements logiques sont insuffisants ou trop fragmentaires."
+elif display_score < 9:
+    analogique_message = "Le raisonnement est fragile : une structure existe, mais elle reste incomplète ou peu démonstrative."
+elif display_score < 13:
+    analogique_message = "Le raisonnement est modéré : la structure logique est présente, mais plusieurs liens restent partiels ou insuffisamment soutenus."
+elif display_score < 16:
+    analogique_message = "Le raisonnement est solide : les idées s’enchaînent de manière globalement cohérente."
+else:
+    analogique_message = "Le raisonnement est très solide : le discours présente une progression claire, cohérente et bien structurée."
+
+st.caption(analogique_message)
+
+# Popover explicatif
+with st.popover("ℹ️ Formule / explication"):
+    st.markdown(f"""
+### Analyse analogique du raisonnement
+
+Cette jauge estime la **solidité cognitive et argumentative du raisonnement**.
+
+Elle ne mesure pas seulement la vérité brute des affirmations : elle évalue la **structure logique du discours**, sa vérifiabilité et les fragilités détectées.
+
+---
+
+### Résultats de cette analyse
+
+Score analogique affiché : **{round(display_score,1)}/20**  
+Score brut calculé : **{round(real_score,1)}/20**
+
+Verdict : **{score_label}**
+
+---
+
+### Lecture du score
+
+Un score faible ne signifie pas nécessairement absence totale de contenu, mais plutôt une **accumulation de signaux de fragilité**.
+
+Plusieurs jauges secondaires peuvent être activées simultanément :
+
+- pression rhétorique  
+- certitude excessive  
+- simplification narrative  
+- déséquilibre entre savoir et affirmation  
+- pénalités de crédibilité  
+
+Lorsque ces signaux s’additionnent, ils **réduisent fortement la solidité apparente du raisonnement**, même si le texte reste structuré en surface.
+
+---
+
+### Plancher visuel
+
+Le score affiché applique un **plancher minimal de 2/20** afin d’éviter une barre vide.
+
+Le score réel (**{round(real_score,1)}**) reste utilisé pour tous les calculs internes.
+
+---
+
+### Formule heuristique réelle
+
+`HFS brut = (0.18×G + 0.12×N + 0.20×V + 0.22×QS + 0.18×VC) − (0.16×D + 0.12×R + 0.18×RC + P)`
+
+Puis :
+
+`HFS = HFS brut + 8 + bonus_épistémique`
+
+Le score final est borné entre **0 et 20**.
+
+Avec :
+
+- **G** : gnōsis  
+- **N** : nous  
+- **V** : vérifiabilité globale  
+- **QS** : qualité des sources  
+- **VC** : vérifiabilité moyenne des affirmations  
+- **D** : doxa  
+- **R** : risque rhétorique  
+- **RC** : risque moyen des affirmations  
+- **P** : pénalités de crédibilité  
+
+---
+
+### Interprétation
+
+0–6 : raisonnement très fragile  
+6–9 : raisonnement fragile  
+9–13 : raisonnement modéré  
+13–16 : raisonnement solide  
+16–20 : raisonnement très solide  
+
+---
+
+### Conclusion
+
+Un score de **{round(display_score,1)}/20** indique un raisonnement **{score_label.lower()}**,  
+avec une **présence notable de signaux de fragilité cognitive**.
+""")
+
+st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
     
-    st.subheader(f"{couleur_r} Solidité argumentative : {etiquette_r}")
-    st.progress(min(score / 20, 1))
-    st.caption(f"Score : {round(score, 1)}/20 — {message_r}")
+disc_type, disc_explanation = detect_discourse_type(result)
+
+st.markdown("### Type de discours détecté")
+st.info(f"**{disc_type}** — {disc_explanation}")
+    
+st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
+
+
+# =============================
+# Barre de raisonnement
+# =============================
+
+score = result.get("hard_fact_score", 0)
+
+if score < 6:
+    couleur_r = "🔴"
+    color_r = "#dc2626"
+    etiquette_r = "Très fragile"
+    message_r = "Le texte présente peu d’éléments de raisonnement structurés."
+elif score < 9:
+    couleur_r = "🟠"
+    color_r = "#f97316"
+    etiquette_r = "Fragile"
+    message_r = "Le raisonnement existe, mais reste incomplet ou insuffisamment construit."
+elif score < 13:
+    couleur_r = "🟡"
+    color_r = "#facc15"
+    etiquette_r = "Modérée"
+    message_r = "Le texte présente une structure de raisonnement cohérente, mais plusieurs affirmations restent conceptuelles ou insuffisamment démontrées."
+elif score < 16:
+    couleur_r = "🟢"
+    color_r = "#16a34a"
+    etiquette_r = "Solide"
+    message_r = "Le discours est bien organisé en surface, mais cette cohérence ne garantit pas sa validité épistémique."
+else:
+    couleur_r = "🟢"
+    color_r = "#15803d"
+    etiquette_r = "Très solide"
+    message_r = "Le texte présente un raisonnement robuste, structuré et bien soutenu."
+
+st.subheader(f"{couleur_r} Cohérence structurelle : {etiquette_r}")
+# Barre épaisse colorée
+st.caption(
+    "Cette jauge mesure la Cohérence structurelle du texte : structure du raisonnement, "
+    "cohérence logique et présence d’éléments vérifiables. "
+    "La crédibilité globale dépend aussi de la qualité des sources et de la vérifiabilité des affirmations."
+)
+st.markdown(f"""
+<div style="width:100%; margin-top:10px; margin-bottom:10px;">
+    <div style="
+        width:100%;
+        height:26px;
+        background:#e5e7eb;
+        border-radius:12px;
+        overflow:hidden;
+        border:1px solid #cbd5e1;
+    ">
+        <div style="
+            width:{min(score / 20, 1) * 100}%;
+            height:100%;
+            background:{color_r};
+            transition:width 0.4s ease;
+        "></div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown(
+    f"<b style='color:{color_r}'>{etiquette_r}</b> — Score : {round(score, 1)}/20",
+    unsafe_allow_html=True
+)
+st.caption(message_r)
+with st.popover("ℹ️ Formule / explication"):
+
+    st.subheader(f"Verdict : {couleur_r} Solidité argumentative — {etiquette_r}")
+    st.caption(f"Score argumentatif : {round(score, 1)}/20 — {message_r}")
+
+    st.subheader("Résumé de l’analyse")
+
+    m1, m2 = st.columns(2)
+    m1.metric("Score argumentatif", round(score, 1))
+    m2.metric("Verdict", etiquette_r)
+
+    m3, m4 = st.columns(2)
+    m3.metric("G — gnōsis", round(result.get("G", 0), 2))
+    m4.metric("N — nous", round(result.get("N", 0), 2))
+
+    st.markdown(f"""
+### Ce que mesure cette jauge
+
+Cette jauge estime la **solidité argumentative globale** du texte.
+
+Elle combine la structure du raisonnement, la présence d’éléments vérifiables, la qualité des sources et les fragilités rhétoriques détectées.
+
+### Signaux pris en compte
+
+La jauge s’appuie notamment sur :
+
+- **G — gnōsis**
+- **N — nous**
+- **V — vérifiabilité globale**
+- **QS — qualité des sources**
+- **VC — vérifiabilité moyenne des affirmations**
+- **D — doxa**
+- **R — risque rhétorique**
+- **RC — risque moyen des affirmations**
+- **P — pénalités de crédibilité**
+
+### Formule heuristique réelle
+
+`HFS brut = (0.18×G + 0.12×N + 0.20×V + 0.22×QS + 0.18×VC) − (0.16×D + 0.12×R + 0.18×RC + P)`
+
+Puis :
+
+`HFS = HFS brut + 8 + bonus_épistémique`
+
+Le score final est borné entre **0 et 20**.
+
+### Interprétation
+
+- **0–6** : raisonnement très fragile
+- **6–9** : raisonnement fragile
+- **9–13** : raisonnement modéré
+- **13–16** : raisonnement solide
+- **16–20** : raisonnement très solide
+
+### Lecture du résultat
+
+Un score de **{round(score, 1)}/20** indique une solidité argumentative **{etiquette_r.lower()}**.
+
+{message_r}
+""")
+
+st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
+
+
+# =============================
+# Calculs mécroyance / mensonge
+# =============================
+
+lie_result = compute_lie_gauge(result["M"], result["ME"])
+
+gauge_value = lie_result["gauge"]
+gauge_label = lie_result["label"]
+gauge_color = lie_result["color"]
+gauge_intensity = lie_result["intensity"]
+
+M_val = result.get("M", 0)
+ME_val = result.get("ME", 0)
+
+m_norm = max(0.0, min(1.0, (M_val + 10) / 30))
+me_norm = max(0.0, min(1.0, ME_val / 20))
+delta_lie = me_norm - (1 - m_norm)
+gauge_calc = max(0.0, min(1.0, 0.5 + (delta_lie * 0.8)))
+
+if gauge_color == "#a16207":
+    emoji = "🟤"
+elif gauge_color == "#ca8a04":
+    emoji = "🟡"
+elif gauge_color == "#f59e0b":
+    emoji = "🟠"
+elif gauge_color == "#dc2626":
+    emoji = "🔴"
+else:
+    emoji = "⚪"
+
+st.subheader(f"{emoji} Tension cognitive : {gauge_label}")
+st.caption(
+    "Cette jauge indique si le discours relève plutôt d’une erreur sincère "
+    "(mécroyance) ou d’une possible manipulation. "
+    "Plus la jauge progresse, plus la structure du texte se rapproche du mensonge."
+)
+# Barre visuelle de la jauge
+st.markdown(f"""
+<div style="width:100%; margin-top:10px; margin-bottom:10px;">
+    <div style="
+        width:100%;
+        height:26px;
+        background:#e5e7eb;
+        border-radius:12px;
+        overflow:hidden;
+        border:1px solid #cbd5e1;
+    ">
+        <div style="
+            width:{gauge_value*100}%;
+            height:100%;
+            background:{gauge_color};
+            transition:width 0.4s ease;
+        "></div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown(
+    f"<b style='color:{gauge_color}'>{gauge_label}</b> — intensité : {round(gauge_intensity*100,1)}%",
+    unsafe_allow_html=True
+)
+
+st.caption("Erreur sincère ⟵⟶ Manipulation probable")
+
+with st.popover("ℹ️ Formule / résultats"):
+
+    st.subheader(f"Verdict : {gauge_label}")
     st.caption(
-        "Cette jauge mesure la solidité argumentative du texte : structure du raisonnement, "
-        "cohérence logique et présence d’éléments vérifiables. "
-        "La crédibilité globale dépend aussi de la qualité des sources et de la vérifiabilité des affirmations."
+        f"Position : {round(gauge_calc, 3)} / 1 — "
+        f"Intensité : {round(gauge_intensity * 100, 1)}%"
     )
+
+    st.subheader("Résumé de l’analyse")
+
+    m1, m2 = st.columns(2)
+    m1.metric("M — mécroyance", round(M_val, 2))
+    m2.metric("ME — mendacité", round(ME_val, 2))
+
+    m3, m4 = st.columns(2)
+    m3.metric("M normalisé", round(m_norm, 3))
+    m4.metric("ME normalisé", round(me_norm, 3))
+
+    m5, m6 = st.columns(2)
+    m5.metric("Delta cognitif", round(delta_lie, 3))
+    m6.metric("Position jauge", round(gauge_calc, 3))
+
+    m7, m8 = st.columns(2)
+    m7.metric("Intensité", f"{round(gauge_intensity * 100, 1)}%")
+    m8.metric("Verdict", gauge_label)
+
+    st.markdown(f"""
+Cette jauge situe le discours sur un axe allant de la **mécroyance** au **mensonge stratégique**.
+
+Elle compare deux indices cognitifs :
+
+- **M** : indice de mécroyance
+- **ME** : indice de mendacité
+
+---
+
+### 1️⃣ Indice de mécroyance
+
+`M = (G + N) − D`
+
+avec :
+
+G = gnōsis  
+N = nous  
+D = doxa
+
+Dans cette analyse :
+
+`M = {round(M_val, 2)}`
+
+---
+
+### 2️⃣ Indice de mensonge stratégique
+
+`ME = 2D − (G + N)`
+
+Dans cette analyse :
+
+`ME = {round(ME_val, 2)}`
+
+---
+
+### 3️⃣ Normalisation des indices
+
+`m_norm = (M + 10) / 30`
+
+`me_norm = ME / 20`
+
+Dans cette analyse :
+
+`m_norm ≈ {round(m_norm, 3)}`
+
+`me_norm ≈ {round(me_norm, 3)}`
+
+---
+
+### 4️⃣ Calcul de la tension cognitive
+
+`delta = me_norm − (1 − m_norm)`
+
+Dans cette analyse :
+
+`delta ≈ {round(delta_lie, 3)}`
+
+---
+
+### 5️⃣ Formule heuristique principale
+
+`gauge = 0.5 + (delta × 0.8)`
+
+La valeur finale est bornée entre **0** et **1**.
+
+Position observée :
+
+`gauge = {round(gauge_calc, 3)} / 1`
+
+---
+
+### Interprétation de la jauge
+
+0.00–0.20 : mécroyance forte  
+0.20–0.40 : mécroyance modérée  
+0.40–0.60 : zone ambiguë  
+0.60–0.80 : mensonge probable  
+0.80–1.00 : mensonge extrême
+
+---
+
+### Lecture du résultat
+
+Plus **M domine ME**, plus le texte relève d’une erreur sincère ou d’un désalignement cognitif.
+
+Plus **ME domine M**, plus le texte se rapproche d’une manipulation stratégique.
+
+Dans cette analyse, la jauge indique :
+
+**{gauge_label}**
+""")
+
+# =============================
+# Diagnostic cognitif
+# =============================
+
+delta_mm = round(result["M"] - result["ME"], 2)
+st.caption(f"Écart cognitif (M − ME) : {delta_mm}")
+
+if result["M"] > result["ME"] + 1:
+    dominant_pattern = "Structure dominante : mécroyance"
+elif result["ME"] > result["M"] + 1:
+    dominant_pattern = "Structure dominante : mensonge stratégique"
+else:
+    dominant_pattern = "Structure dominante : mixte ou ambiguë"
+
+if result["ME"] > result["M"] and result["ME"] > 0:
+    cognitive_type = "Mensonge stratégique possible"
+elif result["M"] < 0:
+    cognitive_type = "Forte mécroyance / clôture cognitive"
+else:
+    cognitive_type = "Structure fortement désalignée, compatible avec une construction de type mensonge, sans indication claire d’intention manipulatoire."
+
+st.subheader("Interprétation cognitive")
+st.write(cognitive_type)
+
+if result["M"] - result["ME"] > 3:
+    diagnosis = "Structure de mécroyance forte"
+elif result["M"] > result["ME"]:
+    diagnosis = "Structure de mécroyance modérée"
+elif abs(result["M"] - result["ME"]) <= 1:
+    diagnosis = "Structure cognitive ambiguë"
+else:
+    diagnosis = "Tromperie stratégique possible"
+
+st.subheader("Diagnostic cognitif")
+st.write(diagnosis)
+
+# =============================
+# Explication automatique de la jauge mensonge
+# =============================
+
+if gauge_value >= 0.70:
+    st.warning("### Pourquoi cette jauge indique une manipulation probable ?")
+
+    st.markdown("""
+La jauge monte fortement parce que le texte présente une combinaison de signaux :
+
+- une certitude très élevée
+- un niveau de preuves insuffisant face à cette certitude
+- une pression rhétorique importante
+- des affirmations difficiles à vérifier
+- des formulations pouvant orienter le lecteur plutôt que d’éclairer le raisonnement
+""")
+
+    st.markdown("#### Facteurs détectés")
+
+    st.write(f"- Mécroyance M : {result['M']}")
+    st.write(f"- Mensonge stratégique ME : {result['ME']}")
+    st.write(f"- Certitude D : {result['D']}")
+    st.write(f"- Savoir G : {result['G']}")
+    st.write(f"- Compréhension N : {result['N']}")
+    st.write(f"- Pression rhétorique : {round(result.get('rhetorical_pressure', 0) * 100, 1)}%")
+    st.write(f"- Red flags détectés : {len(result.get('red_flags', []))}")
+
+elif gauge_value >= 0.45:
+    st.info("### Pourquoi cette jauge s’allume ?")
+
+    st.markdown("""
+Le texte contient une tension entre mécroyance et manipulation.
+
+La certitude paraît plus forte que les preuves disponibles, mais les signaux ne suffisent pas encore à conclure à une manipulation nette.
+""")
     
+else:
+    pass
+    
+    st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
+
     # =============================
     # Barre de crédibilité finale
     # =============================
     final_score = result.get("final_credibility_score", score)
-    
+
     if final_score < 6:
         couleur_c = "🔴"
+        color_c = "#dc2626"
         etiquette_c = "Très fragile"
         message_c = "Le texte présente de fortes fragilités structurelles ou vérifiables."
     elif final_score < 9:
         couleur_c = "🟠"
+        color_c = "#f97316"
         etiquette_c = "Fragile"
         message_c = "Le texte contient plusieurs fragilités importantes."
     elif final_score < 13:
         couleur_c = "🟡"
+        color_c = "#facc15"
         etiquette_c = "Prudente"
         message_c = "Le raisonnement est présent, mais certaines affirmations reposent davantage sur des idées générales que sur des éléments vérifiables."
     elif final_score < 16:
         couleur_c = "🟢"
+        color_c = "#22c55e"
         etiquette_c = "Solide"
         message_c = "Le texte présente une crédibilité globale correcte, avec peu de signaux problématiques."
     else:
         couleur_c = "🟢"
+        color_c = "#15803d"
         etiquette_c = "Très solide"
         message_c = "Le texte présente une structure cognitive robuste et peu de signaux de fragilité."
     
     st.subheader(f"{couleur_c} Crédibilité finale : {etiquette_c}")
-    st.progress(min(final_score / 20, 1))
-    st.caption(f"Score final : {round(final_score, 1)}/20 — {message_c}")
-
-    # =============================
-    # Analyse analogique du raisonnement
-    # =============================
     
-    st.subheader("Analyse analogique du raisonnement")
     st.caption(
-        "Analyse analogique du raisonnement à partir des structures du langage afin d’estimer la solidité épistémique du discours."
+        "Cette jauge synthétise la crédibilité globale du texte en combinant "
+        "la solidité factuelle, l’équilibre cognitif entre savoir et certitude, "
+        "et la pression discursive détectée dans le langage."
     )
     
-    base_score = result.get("final_credibility_score", result["hard_fact_score"])
+    st.markdown(f"""
+    <div style="width:100%; margin-top:10px; margin-bottom:10px;">
+        <div style="
+            width:100%;
+            height:26px;
+            background:#e5e7eb;
+            border-radius:12px;
+            overflow:hidden;
+            border:1px solid #cbd5e1;
+        ">
+            <div style="
+                width:{min(final_score / 20, 1) * 100}%;
+                height:100%;
+                background:{color_c};
+                transition:width 0.4s ease;
+            "></div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    st.progress(base_score / 20)
-    st.caption(f"Score analogique : {round(base_score,1)}/20")
+    st.markdown(
+        f"<b style='color:{color_c}'>{etiquette_c}</b> — Score final : {round(final_score,1)}/20",
+        unsafe_allow_html=True
+    )
     
-    st.divider()
-    show_gauge_help()
+    st.caption(message_c)
     
-    disc_type, disc_explanation = detect_discourse_type(result)
+    with st.popover("ℹ️ Formule / explication"):
     
-    st.markdown("### Type de discours détecté")
-    st.info(f"**{disc_type}** — {disc_explanation}")
+        st.subheader(f"{T['verdict']} : {couleur_c} Crédibilité finale — {etiquette_c}")
+        st.caption(f"Score final : {round(final_score, 1)}/20 — {message_c}")
+        st.subheader(T["summary"])
     
-    st.divider()
-
-# =============================
-# Jauges structurelles avancées
-# =============================
-
-result = st.session_state.get("last_result")
-article_for_analysis = st.session_state.get("last_article", "")
-
-if not result:
-    st.info(T["paste_text_or_load_url"])
-    st.stop()
-
-st.subheader("Jauges structurelles avancées")
-
-gauges = [
-    (
-        "Pression narrative",
-        result.get("narrative_pressure_score", 0),
-        result.get("narrative_pressure_label", "Non calculée"),
-        result.get("narrative_pressure_interpretation", "")
-    ),
-    (
-        "Saut logique",
-        result.get("logical_jump_score", 0),
-        result.get("logical_jump_label", "Non calculée"),
-        result.get("logical_jump_interpretation", "")
-    ),
-    (
-        "Asymétrie argumentative",
-        result.get("argument_asymmetry_score", 0),
-        result.get("argument_asymmetry_label", "Non calculée"),
-        result.get("argument_asymmetry_interpretation", "")
-    ),
-    (
-        "Densité argumentative",
-        result.get("argument_density_score", 0),
-        result.get("argument_density_label", "Non calculée"),
-        result.get("argument_density_interpretation", "")
-    ),
-    (
-        "Prédiction absolue",
-        result.get("absolute_prediction_score", 0),
-        result.get("absolute_prediction_label", "Non calculée"),
-        result.get("absolute_prediction_interpretation", "")
-    ),
-    (
-        "Amplification de menace",
-        result.get("threat_amplification_advanced_score", 0),
-        result.get("threat_amplification_advanced_label", "Non calculée"),
-        result.get("threat_amplification_advanced_interpretation", "")
-    ),
-    (
-        "Certitude forte composée",
-        result.get("strong_certainty_score", 0),
-        result.get("strong_certainty_label", "Non calculée"),
-        result.get("strong_certainty_interpretation", "")
-    ),
-]
-
-for title, score, label, interpretation in gauges:
-    st.markdown(f"**{title}**")
-    st.progress(score)
-    st.caption(f"{label} — {round(score * 100, 1)}%")
-    if interpretation:
-        st.write(interpretation)
-    st.divider()
+        m1, m2 = st.columns(2)
+        m1.metric("HFS", round(result["hard_fact_score"], 1))
+        m2.metric("G — gnōsis", round(result["G"], 2))
+        
+        m3, m4 = st.columns(2)
+        m3.metric("N — nous", round(result["N"], 2))
+        m4.metric("D — doxa", round(result["D"], 2))
+        
+        m5, m6 = st.columns(2)
+        m5.metric("Pression discursive", round(result.get("discursive_pressure", 0), 2))
+        m6.metric("ID", round(result.get("ID", 0), 2))
+        
+        m7, m8 = st.columns(2)
+        m7.metric("Pénalité jauges", round(result.get("display_gauge_penalty", 0), 2))
+        m8.metric("Score final", round(final_score, 1))
+        
+        st.markdown(f"""
+        Cette jauge synthétise la **crédibilité globale du texte**.
+        
+        Elle combine trois dimensions :
+        
+        - la solidité factuelle du texte  
+        - l’équilibre cognitif entre connaissance, compréhension et certitude  
+        - la pression discursive détectée dans le langage  
+        
+        ---
+        
+        ### 1️⃣ Solidité factuelle
+        
+        `HFS = hard_fact_score / 20`
+        
+        Dans cette analyse :
+        
+        `HFS = {round(result["hard_fact_score"], 1)} / 20`
+        
+        ---
+        
+        ### 2️⃣ Calibration cognitive
+        
+        `OC = (G + N) / (G + N + D)`
+        
+        avec :
+        
+        G = gnōsis  
+        N = nous  
+        D = doxa  
+        
+        Dans cette analyse :
+        
+        `OC = ({round(result["G"],2)} + {round(result["N"],2)}) / ({round(result["G"],2)} + {round(result["N"],2)} + {round(result["D"],2)})`
+        
+        `OC ≈ {round((result["G"] + result["N"]) / max((result["G"] + result["N"] + result["D"]), 1), 2)}`
+        
+        ---
+        
+        ### 3️⃣ Indice de pression discursive
+        
+        `ID = 1 − pression_discursive`
+        
+        avec :
+        
+        `pression_discursive = propagande + pression_rhétorique`
+        
+        Plus la pression discursive est forte, plus le score final diminue.
+        
+        ---
+        
+        ### 4️⃣ Formule heuristique principale
+        
+        `score_initial = 20 × HFS × OC × ID`
+        
+        ---
+        
+        ### 5️⃣ Ajustement final
+        
+        `score_final = score_initial − pénalité_jauges`
+        
+        Score final observé :
+        
+        `score_final = {round(final_score, 1)} / 20`
+        
+        ---
+        
+        ### Interprétation du score final
+        
+        0–5 : crédibilité très fragile  
+        6–9 : crédibilité fragile  
+        10–14 : crédibilité prudente  
+        15–20 : crédibilité robuste
+        """)
+    
+        st.markdown("""
+        <div style="text-align:center; margin:25px 0; color:#bbb;">
+        ✦ ✦ ✦
+        </div>
+        """, unsafe_allow_html=True)
+    
+st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
 
 # =============================
 # Analyse sémantique du discours
@@ -6956,54 +7925,473 @@ if st.session_state.get("semantic_mode", False):
 else:
     st.info("Activez l’analyse sémantique pour calculer cette jauge.")
 
-st.divider()
+st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+──── 🧠 ────
+</div>
+""", unsafe_allow_html=True)
 
-# =============================
-# Résumé chiffré
-# =============================
-
-col1, col2, col3 = st.columns(3)
-col1.metric("Indice classique", result["M"], help=T["help_classic_score"])
-col2.metric("Indice ajusté", result["improved"], help=T["help_improved_score"])
-col3.metric("Score de raisonnement", result["hard_fact_score"], help=T["help_hard_fact_score"])
-
-# =============================
-# Gravité cognitive globale
-# =============================
-gravity = result.get("cognitive_gravity", 0)
-
-st.markdown("### Gravité cognitive globale")
-st.progress(gravity)
-
-if gravity < 0.2:
-    st.caption("Gravité faible — discours globalement sain.")
-elif gravity < 0.4:
-    st.caption("Gravité modérée — quelques tensions cognitives.")
-elif gravity < 0.6:
-    st.caption("Gravité élevée — dérive discursive notable.")
-elif gravity < 0.8:
-    st.caption("Gravité très élevée — structure discursive problématique.")
-else:
-    st.caption("Gravité critique — convergence de manipulation ou désalignement cognitif.")
+life_score = round((result.get("hard_fact_score", 0) / 20) * 100, 1)
 
 # =============================
 # Cerveau DOXA
 # =============================
+
 brain = result.get("doxa_brain", {})
 
-st.markdown("### Cerveau DOXA")
+st.markdown("### 🧠 Cerveau DOXA")
 
-st.metric(
-    "Stabilité cognitive",
-    f"{brain.get('cognitive_stability', 0):.2f}"
+st.markdown(
+    f"""
+<div style='
+border:1px solid #334155;
+border-radius:16px;
+padding:18px;
+margin:12px 0 18px 0;
+background:linear-gradient(135deg, rgba(15,23,42,0.06), rgba(30,41,59,0.03));
+'>
+    <div style='font-size:20px; font-weight:800; margin-bottom:6px;'>
+        Diagnostic cognitif global
+    </div>
+    <div style='font-size:15px; color:#475569;'>
+        {brain.get("brain_verdict", "Diagnostic indisponible.")}
+    </div>
+</div>
+""",
+    unsafe_allow_html=True
 )
 
-st.caption(brain.get("brain_verdict", "Diagnostic indisponible."))
-st.info(brain.get("brain_advice", ""))
+# Variables principales
+stability = brain.get("cognitive_stability", 0)
+gravity = brain.get("cognitive_gravity", 1 - stability)
 
-with st.expander("Résumé du cerveau DOXA"):
-    st.write(brain.get("brain_summary", "Aucun résumé disponible."))
+dominant_regime = brain.get("dominant_regime", "Non déterminé")
+brain_summary = brain.get("brain_summary", "Aucun résumé disponible.")
+brain_advice = brain.get("brain_advice", "")
 
+# ✅ Correction dynamique avec jauges secondaires
+secondary_pressure = compute_secondary_alert_pressure(result)
+
+gravity = min(1.0, gravity + secondary_pressure * 0.65)
+stability = max(0.0, stability - secondary_pressure * 0.55)
+
+# Couleur stabilité
+if stability >= 0.80:
+    stability_label = "Stable"
+    stability_color = "#16a34a"
+elif stability >= 0.60:
+    stability_label = "Assez stable"
+    stability_color = "#facc15"
+elif stability >= 0.40:
+    stability_label = "Instable"
+    stability_color = "#f97316"
+else:
+    stability_label = "Très instable"
+    stability_color = "#dc2626"
+
+# Ligne de métriques principales
+c1, c2, c3, c4 = st.columns(4)
+
+c1.metric("Stabilité cognitive", f"{stability:.2f}")
+c2.metric("Gravité cognitive", f"{gravity:.2f}")
+c3.metric("Régime dominant", dominant_regime)
+c4.metric("Vitalité cognitive", f"{life_score}%")
+
+# Grosse jauge de stabilité
+st.markdown("#### Stabilité cognitive")
+
+render_custom_gauge(stability, stability_color)
+
+st.markdown(
+    f"""
+<div style='
+border:1px solid {stability_color};
+border-radius:12px;
+padding:12px;
+margin-top:8px;
+background-color:rgba(255,255,255,0.03);
+'>
+<b style='color:{stability_color};'>
+Stabilité {stability_label} — {stability:.2f}
+</b><br>
+"Le discours reste relativement cohérent, mais plusieurs signaux secondaires réduisent son équilibre cognitif."
+</div>
+""",
+    unsafe_allow_html=True
+)
+
+with st.popover("ℹ️ Comprendre le cerveau DOXA"):
+    st.markdown(f"""
+### Cerveau DOXA
+
+Le **Cerveau DOXA** est une synthèse générale de l’analyse.
+
+Il regroupe les principaux indicateurs cognitifs du discours afin de produire un diagnostic global.
+
+---
+
+### Résultat de cette analyse
+
+**État : {stability_label}**
+
+**Stabilité cognitive : {stability:.2f}**
+
+**Gravité cognitive : {gravity:.2f}**
+
+**Régime dominant : {dominant_regime}**
+
+---
+
+### 1️⃣ Stabilité cognitive
+
+La stabilité cognitive indique si le discours reste globalement équilibré ou s’il présente des signes de dérive.
+
+Une stabilité élevée signifie que le texte présente peu de signaux de désalignement cognitif.
+
+Dans cette analyse :
+
+`stabilité = {stability:.2f}`
+
+---
+
+### 2️⃣ Gravité cognitive
+
+La gravité cognitive représente le niveau global de dérive détecté dans le discours.
+
+Elle est liée à la stabilité :
+
+`gravité = 1 − stabilité`
+
+Dans cette analyse :
+
+`gravité = {gravity:.2f}`
+
+---
+
+### 3️⃣ Régime dominant
+
+Le régime dominant indique la tendance cognitive principale du texte.
+
+Il peut signaler par exemple :
+
+- discours équilibré
+- mécroyance probable
+- pseudo-savoir
+- manipulation rhétorique
+- mensonge stratégique
+- structure mixte ou ambiguë
+
+Dans cette analyse :
+
+**{dominant_regime}**
+
+---
+
+### 4️⃣ Indice classique
+
+L’indice classique correspond au noyau cognitif :
+
+`M = (G + N) − D`
+
+Dans cette analyse :
+
+`M = {round(result.get("M", 0), 2)}`
+
+---
+
+### 5️⃣ Indice ajusté
+
+L’indice ajusté ajoute des corrections complémentaires au score classique.
+
+Il permet d’obtenir une lecture plus large du niveau de robustesse cognitive du discours, en tenant compte non seulement du noyau **M = (G + N) − D**, mais aussi des pénalités, des fragilités discursives et des jauges secondaires détectées.
+
+Dans cette analyse :
+
+**Indice ajusté = {round(result.get("M_adjusted", result.get("ME", 0)), 2)}**
+
+---
+
+### 6️⃣ Score de raisonnement
+
+Le score de raisonnement correspond au **Hard Fact Score**.
+
+Il mesure la solidité factuelle et argumentative du texte.
+
+Dans cette analyse :
+
+`Score de raisonnement = {round(result.get("hard_fact_score", 0), 1)}/20`
+
+---
+
+### 7️⃣ Vitalité cognitive
+
+La vitalité cognitive est le score de raisonnement converti en pourcentage.
+
+Formule :
+
+`vitalité = (hard_fact_score / 20) × 100`
+
+Dans cette analyse :
+
+`vitalité = {life_score}%`
+
+---
+
+### Lecture globale
+
+{brain_summary}
+
+Même si la stabilité est élevée, le régime dominant peut signaler une fragilité particulière, comme du **pseudo-savoir**, une **mécroyance probable** ou une **orientation rhétorique**.
+""")
+
+
+# =============================
+# Gravité cognitive globale
+# =============================
+# 👉 utiliser la gravité corrigée déjà calculée
+# NE PAS relire result ici
+# gravity est déjà modifiée plus haut
+gravity_pct = round(gravity * 100, 1)
+
+if gravity < 0.2:
+    gravity_label = "Faible"
+    gravity_color = "#16a34a"
+    gravity_text = "Discours globalement sain."
+elif gravity < 0.4:
+    gravity_label = "Modérée"
+    gravity_color = "#ca8a04"
+    gravity_text = "Quelques tensions cognitives."
+elif gravity < 0.6:
+    gravity_label = "Élevée"
+    gravity_color = "#f97316"
+    gravity_text = "Dérive discursive notable."
+elif gravity < 0.8:
+    gravity_label = "Très élevée"
+    gravity_color = "#dc2626"
+    gravity_text = "Structure discursive problématique."
+else:
+    gravity_label = "Critique"
+    gravity_color = "#7f1d1d"
+    gravity_text = "Convergence de manipulation ou désalignement cognitif."
+
+st.markdown("### Gravité cognitive globale")
+
+render_custom_gauge(gravity, gravity_color)
+
+st.markdown(
+    f"""
+<div style='
+border:1px solid {gravity_color};
+border-radius:12px;
+padding:12px;
+margin-top:8px;
+background-color:rgba(255,255,255,0.03);
+'>
+<b style='color:{gravity_color};'>
+Gravité {gravity_label} — {gravity_pct}%
+</b><br>
+{gravity_text}
+</div>
+""",
+    unsafe_allow_html=True
+)
+
+with st.popover("ℹ️ Comprendre cette jauge"):
+    st.markdown(f"""
+### Gravité cognitive globale
+
+Cette jauge estime le **niveau global de dérive cognitive** du discours.
+
+Elle ne mesure pas directement si le texte est vrai ou faux.  
+Elle mesure si sa structure présente des signes de **déséquilibre cognitif**, de fermeture argumentative, de pression discursive ou de fragilité logique.
+
+#### Résultat de cette analyse
+
+**Gravité cognitive : {gravity_pct}%**
+
+**Verdict : {gravity_label}**
+
+
+### Interprétation de la gravité cognitive
+
+La **gravité cognitive** indique le **niveau global de dérive du raisonnement** dans le discours analysé.
+
+Plus la gravité est faible, plus le discours est **cognitivement sain et équilibré**.  
+Plus elle est élevée, plus le texte présente des **signaux de manipulation, de pression rhétorique ou de désalignement entre faits et certitudes**.
+
+#### Échelle d’interprétation
+
+| Gravité | Lecture |
+|--------|--------|
+| **0.00 – 0.20** | Gravité faible — discours globalement sain |
+| **0.20 – 0.40** | Gravité modérée — quelques tensions cognitives |
+| **0.40 – 0.60** | Gravité élevée — dérive discursive notable |
+| **0.60 – 0.80** | Gravité très élevée — structure discursive problématique |
+| **0.80 – 1.00** | Gravité critique — convergence de manipulation ou désalignement cognitif |
+
+#### Signaux pris en compte
+
+La jauge combine plusieurs indicateurs détectés dans le texte :
+
+- indice de **mensonge potentiel**
+- **pression rhétorique**
+- **propagande discursive**
+- **dissonance factuelle**
+- **fermeture cognitive**
+- **faiblesse factuelle**
+
+Ces signaux sont agrégés pour produire un **diagnostic global de santé cognitive du discours**.
+
+### Formule heuristique
+
+La gravité cognitive est calculée à partir de plusieurs composantes combinées :
+
+- indice stratégique (tension entre mécroyance et mensonge)
+- fermeture cognitive (déséquilibre entre G, N et D)
+- pression discursive (rhétorique, émotion, simplification)
+- impact du mensonge potentiel
+- pression secondaire (accumulation des jauges activées)
+
+Formule simplifiée :
+
+gravité =
+    (indice stratégique × 0.35)
+  + (fermeture cognitive × 0.30)
+  + (pression discursive × 0.20)
+  + (impact du mensonge × 0.40)
+
+Puis ajustement :
+
+gravité = gravité + (pression secondaire × 0.45)
+
+Le score final est borné entre 0 et 1.
+
+#### Interprétation
+0 → discours sain
+1 → dérive cognitive maximale
+""")
+
+# =============================
+# Vitalité cognitive
+# =============================
+life_score = round((result.get("hard_fact_score", 0) / 20) * 100, 1)
+life_value = life_score / 100
+
+if life_score < 30:
+    life_label = "Faible"
+    life_color = "#dc2626"
+    life_text = "Vitalité cognitive faible — le discours manque d’appuis solides."
+elif life_score < 50:
+    life_label = "Fragile"
+    life_color = "#f97316"
+    life_text = "Vitalité cognitive fragile — plusieurs éléments restent insuffisamment fondés."
+elif life_score < 70:
+    life_label = "Modérée"
+    life_color = "#facc15"
+    life_text = "Vitalité cognitive modérée — le discours présente des appuis, mais reste perfectible."
+elif life_score < 85:
+    life_label = "Solide"
+    life_color = "#16a34a"
+    life_text = "Le discours contient une matière cognitive dense : les idées sont développées, reliées et appuyées."
+else:
+    life_label = "Très solide"
+    life_color = "#15803d"
+    life_text = "Vitalité cognitive très solide — le discours présente une forte robustesse cognitive."
+
+st.markdown("### Vitalité cognitive")
+render_custom_gauge(life_value, life_color)
+
+st.markdown(
+    f"""
+<div style='
+border:1px solid {life_color};
+border-radius:12px;
+padding:12px;
+margin-top:8px;
+background-color:rgba(255,255,255,0.03);
+'>
+<b style='color:{life_color};'>
+Vitalité cognitive {life_label} — {life_score}%
+</b><br>
+{life_text}
+</div>
+""",
+    unsafe_allow_html=True
+)
+with st.popover("ℹ️ Comprendre cette jauge"):
+    st.markdown(f"""
+### Vitalité cognitive
+
+Cette jauge exprime la **vitalité cognitive du discours** sous forme de pourcentage.
+
+Elle indique dans quelle mesure le texte présente une structure suffisamment fondée, vérifiable et équilibrée.
+
+---
+
+### Résultat de cette analyse
+
+Vitalité cognitive : **{life_score}%**
+
+Verdict : **{life_label}**
+
+---
+
+### Formule heuristique réelle
+
+`vitalité_cognitive = (hard_fact_score / 20) × 100`
+
+Dans cette analyse :
+
+`vitalité_cognitive = ({round(result.get("hard_fact_score", 0), 1)} / 20) × 100`
+
+Soit :
+
+**{life_score}%**
+
+---
+
+### Ce que mesure cette jauge
+
+Elle dépend directement du **HFS — Hard Fact Score**.
+
+Elle tient donc compte de :
+
+- la vérifiabilité des affirmations
+- la qualité des sources
+- l’équilibre entre **G**, **N** et **D**
+- le risque rhétorique
+- les pénalités de crédibilité
+- le bonus épistémique éventuel
+
+---
+
+### Interprétation
+
+- **0–30%** : vitalité faible
+- **30–50%** : vitalité fragile
+- **50–70%** : vitalité modérée
+- **70–85%** : vitalité solide
+- **85–100%** : vitalité très solide
+
+---
+
+### Lecture du résultat
+
+Une vitalité cognitive de **{life_score}%** indique une vitalité **{life_label.lower()}**.
+
+{life_text}
+""")
+    
+with st.expander("📊 Résumé détaillé du cerveau DOXA"):
+    st.write(brain_summary)
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Indice classique", round(result.get("M", 0), 2), help=T["help_classic_score"])
+    col2.metric("Indice ajusté", round(result.get("improved", 0), 2), help=T["help_improved_score"])
+    col3.metric("Score de raisonnement", round(result.get("hard_fact_score", 0), 1), help=T["help_hard_fact_score"])
+    col4.metric("Vitalité cognitive", f"{life_score}%")
+    
 # =============================
 # Partage des résultats
 # =============================
@@ -7020,143 +8408,88 @@ st.link_button(
     use_container_width=True
 )
 
-# =============================
-# Pénalités appliquées
-# =============================
-st.subheader("Pénalités appliquées")
+# -----------------------------
+# Mode sémantique
+# -----------------------------
+if "semantic_mode" not in st.session_state:
+    st.session_state.semantic_mode = False
 
-colp1, colp2, colp3 = st.columns(3)
-
-with colp1:
-    st.metric(
-        "Pénalité crédibilité",
-        result.get("credibility_penalty", 0)
-    )
-
-with colp2:
-    st.metric(
-        "Boost mensonge",
-        result.get("lie_boost_total", 0)
-    )
-
-with colp3:
-    st.metric(
-        "Score final",
-        f"{result.get('final_credibility_score', result['hard_fact_score'])}/20"
-    )
-
+st.markdown("### Analyse sémantique")
 st.caption(
-    "Les pénalités corrigent le score lorsque le texte accumule des signaux "
-    "de fermeture cognitive, de manipulation ou de raisonnement fragile."
+    "Cette analyse sémantique sert à corroborer les jauges ayant déclenché des pénalités. "
+    "Elle vérifie si le sens réel des affirmations confirme les signaux détectés "
+    "par l’analyse analogique du langage."
 )
 
-with st.expander("Voir le détail des pénalités", expanded=False):
-    st.json(result.get("penalty_details", {}))
+if st.button(
+    "Activer l’analyse sémantique",
+    key="semantic_normal",
+    use_container_width=True
+):
+    st.session_state.semantic_mode = True
 
-# =============================
-# Résumé rapide
-# =============================
-mini1, mini2, mini3 = st.columns(3)
-
-mini1.metric("M", round(result["M"], 2))
-mini2.metric("ME", round(result["ME"], 2))
-mini3.metric(
-    "Score final",
-    f"{result.get('final_credibility_score', result['hard_fact_score'])}/20"
+if st.session_state.semantic_mode:
+    st.success("Analyse sémantique activée.")
+else:
+    st.info(
+    "Analyse sémantique inactive. Les pénalités reposent uniquement "
+    "sur l’analyse analogique du discours."
 )
 
-with st.popover("🧠 Voir le résumé complet", use_container_width=True):
+sp1, col_center, sp2 = st.columns([2,3,2])
 
-    st.markdown("### Résultats essentiels")
+with col_center:
 
-    st.metric(
-        "Barre de raisonnement",
-        f"{result.get('final_credibility_score', result['hard_fact_score'])}/20"
-    )
+    st.markdown("### 🧠 Modules d’analyse DOXA")
 
-    col1, col2 = st.columns(2)
+    with st.expander("🧠 Voir le résumé complet des pénalités", expanded=False):
 
-    with col1:
-        st.metric("Indice M", round(result["M"], 2))
-        st.metric(
-            "Dérive dominante",
-            result.get("cognitive_drift_interpretation", "—")
+        # =============================
+        # Pénalités appliquées
+        # =============================
+
+        st.markdown("### Pénalités appliquées")
+
+        # =============================
+        # Résumé chiffré
+        # =============================
+        
+
+        colp1, colp2, colp3 = st.columns(3)
+
+        with colp1:
+            st.metric(
+                "Pénalité crédibilité",
+                round(result.get("credibility_penalty_total", 0), 2)
+            )
+
+        with colp2:
+            st.metric(
+                "Boost mensonge",
+                round(result.get("lie_boost_total", 0), 2)
+            )
+
+        with colp3:
+            st.metric(
+                "Score final",
+                f"{result.get('final_credibility_score', result['hard_fact_score'])}/20"
+            )
+
+        st.caption(
+            "Les pénalités corrigent le score lorsque le texte accumule des signaux "
+            "de fermeture cognitive, de manipulation ou de raisonnement fragile."
         )
 
-    with col2:
-        st.metric("Indice ME", round(result["ME"], 2))
-        st.metric(
-            "Régime cognitif",
-            result.get("cognitive_regime", "—")
-        )
+        with st.expander("Voir le détail des pénalités"):
+            st.write(result.get("weighted_red_flags", []))
 
-    brain = result.get("doxa_brain", {})
 
-    st.markdown("### Profil cognitif")
+    st.divider()
 
-    st.metric(
-        "Profil cognitif",
-        brain.get("brain_profile", "—")
-    )
-
-    colb1, colb2, colb3 = st.columns(3)
-
-    with colb1:
-        st.metric("IR", brain.get("IR", "—"))
-
-    with colb2:
-        st.metric("IL", brain.get("IL", "—"))
-
-    with colb3:
-        st.metric("IC", brain.get("IC", "—"))
-
-    colb4, colb5 = st.columns(2)
-
-    with colb4:
-        st.metric(
-            "Indice stratégique",
-            brain.get("strategic_index", "—")
-        )
-
-    with colb5:
-        st.metric(
-            "Indice de clôture",
-            brain.get("closure_index", "—")
-        )
-
-    # =============================
-    # Diagnostic cognitif rapide
-    # =============================
     st.subheader("Diagnostic cognitif")
     life_score = round((result["hard_fact_score"] / 20) * 100, 1)
     mecroyance_bar = max(0.0, min(1.0, (result["M"] + 10) / 30))
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("Vitalité cognitive")
-        st.progress(life_score / 100)
-        st.caption(f"{life_score}%")
-    with col2:
-        st.write("Indice de mécroyance")
-        st.progress(mecroyance_bar)
-        st.caption(f"M = {result['M']}")
-
-    st.subheader(f"{T['verdict']} : {couleur_c} Crédibilité finale — {etiquette_c}")
-    st.caption(f"Score final : {round(final_score, 1)}/20 — {message_c}")
-    st.subheader(T["summary"])
-
-    m1, m2 = st.columns(2)
-    m1.metric("G — gnōsis", result["G"])
-    m2.metric("N — nous", result["N"])
-    m3, m4 = st.columns(2)
-    m3.metric("D — doxa", result["D"])
-    m4.metric("V — vérifiabilité", result["V"])
-    m5, m6 = st.columns(2)
-    m5.metric("QS", result["source_quality"])
-    m6.metric("RC", round(result["avg_claim_risk"], 1))
-    m7, m8 = st.columns(2)
-    m7.metric("VC", round(result["avg_claim_verifiability"], 1))
-    m8.metric("F", len(result["red_flags"]))
 
     st.divider()
 
@@ -7168,226 +8501,286 @@ with st.popover("🧠 Voir le résumé complet", use_container_width=True):
     fig_triangle = plot_cognitive_triangle_3d(result["G"], result["N"], result["D"])
     st.pyplot(fig_triangle, use_container_width=True)
 
-    st.subheader("Métriques cognitives")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Indice de mécroyance (M)", round(result["M"], 2))
-    with col2:
-        st.metric("Indice de mensonge (ME)", round(result["ME"], 2))
-
     # =============================
-    # Nouvelles jauges : dérives cognitives
+    # 🧠 1. DÉRIVES COGNITIVES FONDAMENTALES
     # =============================
-    st.subheader("Dérives cognitives")
+    st.subheader("🧠 Dérives cognitives fondamentales")
+    st.caption("Dérives internes du raisonnement liées à l’équilibre entre connaissance (G), compréhension (N) et certitude (D).")
+    
 
-    dr1, dr2, dr3 = st.columns(3)
+    # -----------------------------
+    # Pseudo-savoir
+    # -----------------------------
+    st.markdown("### Pseudo-savoir")
+    st.caption("Accumulation de savoirs mal intégrés ou mal compris.")
 
-    with dr1:
-        st.markdown("### Mécroyance")
-        st.caption("La certitude dépasse le savoir et la compréhension.")
+    value = min(result["drift_pseudo_savoir"] / 10, 1.0)
 
-        value = min(result["drift_mecroyance"] / 10, 1.0)
+    if result["drift_pseudo_savoir"] < 1:
+        label, color = "Faible", "#16a34a"
+    elif result["drift_pseudo_savoir"] < 3:
+        label, color = "Modérée", "#ca8a04"
+    elif result["drift_pseudo_savoir"] < 6:
+        label, color = "Élevée", "#f97316"
+    else:
+        label, color = "Très élevée", "#dc2626"
 
-        if result["drift_mecroyance"] < 1:
-            label, color = "Faible", "#16a34a"
-        elif result["drift_mecroyance"] < 3:
-            label, color = "Modérée", "#ca8a04"
-        elif result["drift_mecroyance"] < 6:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
+    render_custom_gauge(value, color)
 
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {result['drift_mecroyance']}",
-            unsafe_allow_html=True
-        )
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {result['drift_pseudo_savoir']}",
+        unsafe_allow_html=True
+    )
 
-    with dr2:
+    with st.popover("ℹ️ Comprendre cette jauge"):
         st.markdown("### Pseudo-savoir")
-        st.caption("Accumulation de savoirs mal intégrés ou mal compris.")
 
-        value = min(result["drift_pseudo_savoir"] / 10, 1.0)
-
-        if result["drift_pseudo_savoir"] < 1:
-            label, color = "Faible", "#16a34a"
-        elif result["drift_pseudo_savoir"] < 3:
-            label, color = "Modérée", "#ca8a04"
-        elif result["drift_pseudo_savoir"] < 6:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {result['drift_pseudo_savoir']}",
-            unsafe_allow_html=True
+        st.write(
+            "Cette jauge mesure un déséquilibre où le texte accumule du savoir apparent "
+            "ou des éléments de connaissance, mais sans compréhension suffisamment intégrée."
         )
 
-    with dr3:
+        st.markdown("**Formule utilisée**")
+        st.code("Pseudo-savoir = max(0, (G + D) - N)")
+
+        st.markdown("**Avec les valeurs actuelles**")
+        st.write(
+            f"G = {result['G']:.2f} | "
+            f"D = {result['D']:.2f} | "
+            f"N = {result['N']:.2f}"
+        )
+
+        st.code(
+            f"max(0, ({result['G']:.2f} + {result['D']:.2f}) - {result['N']:.2f}) "
+            f"= {result['drift_pseudo_savoir']:.2f}"
+        )
+
+        st.markdown("**Interprétation**")
+        st.write(
+            "Plus ce score est élevé, plus le texte donne une impression de savoir "
+            "sans que ce savoir soit suffisamment digéré, relié ou compris."
+        )
+
+        st.markdown("**Normalisation graphique**")
+        st.code("value = min(drift_pseudo_savoir / 10, 1.0)")
+    
+    st.divider()
+
+    # -----------------------------
+    # Intuition dogmatique
+    # -----------------------------
+    st.markdown("### Intuition dogmatique")
+    st.caption("Conviction forte sans base de savoir suffisante.")
+
+    value = min(result["drift_intuition_dogmatique"] / 10, 1.0)
+
+    if result["drift_intuition_dogmatique"] < 1:
+        label, color = "Faible", "#16a34a"
+    elif result["drift_intuition_dogmatique"] < 3:
+        label, color = "Modérée", "#ca8a04"
+    elif result["drift_intuition_dogmatique"] < 6:
+        label, color = "Élevée", "#f97316"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {result['drift_intuition_dogmatique']}",
+        unsafe_allow_html=True
+    )
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
         st.markdown("### Intuition dogmatique")
-        st.caption("Conviction forte sans base de savoir suffisante.")
 
-        value = min(result["drift_intuition_dogmatique"] / 10, 1.0)
-
-        if result["drift_intuition_dogmatique"] < 1:
-            label, color = "Faible", "#16a34a"
-        elif result["drift_intuition_dogmatique"] < 3:
-            label, color = "Modérée", "#ca8a04"
-        elif result["drift_intuition_dogmatique"] < 6:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {result['drift_intuition_dogmatique']}",
-            unsafe_allow_html=True
+        st.write(
+            "Cette jauge mesure un déséquilibre où l’intuition ou la compréhension apparente "
+            "s’allie à une certitude forte, mais sans base de savoir suffisamment articulée."
         )
 
-    st.markdown("### Indice global de dérive cognitive")
-    st.caption("Synthèse des trois dérives cognitives.")
+        st.markdown("**Formule utilisée**")
+        st.code("Intuition dogmatique = max(0, (N + D) - G)")
 
-    global_value = min(result["global_cognitive_drift"] / 10, 1.0)
-
-    if result["global_cognitive_drift"] < 1:
-        global_label, global_color = "Faible", "#16a34a"
-    elif result["global_cognitive_drift"] < 3:
-        global_label, global_color = "Modérée", "#ca8a04"
-    elif result["global_cognitive_drift"] < 6:
-        global_label, global_color = "Élevée", "#f97316"
-    else:
-        global_label, global_color = "Très élevée", "#dc2626"
-
-    render_custom_gauge(global_value, global_color)
-    st.markdown(
-        f"<b style='color:{global_color}'>{global_label}</b> — {result['global_cognitive_drift']}",
-        unsafe_allow_html=True
-    )
-    st.caption(result["cognitive_drift_interpretation"])
-
-    # =============================
-    # Suite du diagnostic
-    # =============================
-    delta_mm = round(result["M"] - result["ME"], 2)
-    st.caption(f"Écart cognitif (M − ME) : {delta_mm}")
-
-    if result["M"] > result["ME"] + 1:
-        dominant_pattern = "Structure dominante : mécroyance"
-    elif result["ME"] > result["M"] + 1:
-        dominant_pattern = "Structure dominante : mensonge stratégique"
-    else:
-        dominant_pattern = "Structure dominante : mixte ou ambiguë"
-
-    st.subheader("Structure cognitive dominante")
-    st.write(dominant_pattern)
-
-    if result["ME"] > result["M"] and result["ME"] > 0:
-        cognitive_type = "Mensonge stratégique possible"
-    elif result["M"] < 0:
-        cognitive_type = "Forte mécroyance / clôture cognitive"
-    else:
-        cognitive_type = "Cognition probablement sincère mais désalignée"
-
-    st.subheader("Interprétation cognitive")
-    st.write(cognitive_type)
-
-    if result["M"] - result["ME"] > 3:
-        diagnosis = "Structure de mécroyance forte"
-    elif result["M"] > result["ME"]:
-        diagnosis = "Structure de mécroyance modérée"
-    elif abs(result["M"] - result["ME"]) <= 1:
-        diagnosis = "Structure cognitive ambiguë"
-    else:
-        diagnosis = "Tromperie stratégique possible"
-
-    st.subheader("Diagnostic cognitif")
-    st.write(diagnosis)
-
-    lie_result = compute_lie_gauge(result["M"], result["ME"])
-
-    gauge_value = lie_result["gauge"]
-    gauge_label = lie_result["label"]
-    gauge_color = lie_result["color"]
-    ME_gauge = lie_result["ME"]
-    gauge_intensity = lie_result["intensity"]
-
-    st.write("Tension cognitive (mécroyance vs mensonge)")
-    st.caption(
-        "Cette jauge indique si le discours relève plutôt d’une erreur sincère "
-        "(mécroyance) ou d’une possible manipulation. "
-        "Plus la jauge progresse, plus la structure du texte se rapproche du mensonge."
-    )
-
-    st.markdown(f"""
-    <div style="width:100%; margin-top:10px; margin-bottom:10px;">
-        <div style="
-            width:100%;
-            height:26px;
-            background:#e5e7eb;
-            border-radius:12px;
-            overflow:hidden;
-            border:1px solid #cbd5e1;
-        ">
-            <div style="
-                width:{gauge_value*100}%;
-                height:100%;
-                background:{gauge_color};
-                transition:width 0.4s ease;
-            "></div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    st.markdown(
-        f"<b style='color:{gauge_color}'>{gauge_label}</b> — intensité : {round(gauge_intensity*100,1)}%",
-        unsafe_allow_html=True
-    )
-
-    st.caption("Erreur sincère ⟵⟶ Manipulation probable")
-
-    # Explication automatique de la jauge mensonge
-    if gauge_value >= 0.70:
-        st.warning("### Pourquoi cette jauge indique une manipulation probable ?")
-
-        st.markdown("""
-La jauge monte fortement parce que le texte presente une combinaison de signaux :
-
-- une certitude tres elevee
-- un niveau de preuves insuffisant face a cette certitude
-- une pression rhetorique importante
-- des affirmations difficiles a verifier
-- des formulations pouvant orienter le lecteur plutot que d'eclairer le raisonnement
-""")
-
-        st.markdown("#### Facteurs detectes")
-
-        st.write(f"- Mecroyance M : {result['M']}")
-        st.write(f"- Mensonge strategique ME : {result['ME']}")
-        st.write(f"- Certitude D : {result['D']}")
-        st.write(f"- Savoir G : {result['G']}")
-        st.write(f"- Comprehension N : {result['N']}")
-        st.write(f"- Pression rhetorique : {round(result['rhetorical_pressure'] * 100, 1)}%")
-        st.write(f"- Red flags detectes : {len(result.get('red_flags', []))}")
-
-    elif gauge_value >= 0.45:
-        st.info("### Pourquoi cette jauge s'allume ?")
-
-        st.markdown("""
-Le texte contient une tension entre mecroyance et manipulation.
-
-La certitude parait plus forte que les preuves disponibles, mais les signaux ne suffisent pas encore a conclure a une manipulation nette.
-""")
-
-    else:
-        st.caption(
-            "La jauge reste basse : le texte releve plutot d'une erreur sincere "
-            "ou d'un desalignement cognitif."
+        st.markdown("**Avec les valeurs actuelles**")
+        st.write(
+            f"N = {result['N']:.2f} | "
+            f"D = {result['D']:.2f} | "
+            f"G = {result['G']:.2f}"
         )
+
+        st.code(
+            f"max(0, ({result['N']:.2f} + {result['D']:.2f}) - {result['G']:.2f}) "
+            f"= {result['drift_intuition_dogmatique']:.2f}"
+        )
+
+        st.markdown("**Interprétation**")
+        st.write(
+            "Plus ce score est élevé, plus le texte semble reposer sur une intuition affirmée "
+            "ou une compréhension subjective, mais insuffisamment soutenue par des éléments de savoir."
+        )
+
+        st.markdown("**Normalisation graphique**")
+        st.code("value = min(drift_intuition_dogmatique / 10, 1.0)")
+
 
     st.divider()
 
-    st.subheader("Jauge de pression rhétorique")
+    # -----------------------------
+    # Fermeture cognitive
+    # -----------------------------
+    st.markdown("### Fermeture cognitive")
+    st.caption("Excès de certitude par rapport au savoir et à la compréhension.")
+
+    value = min(result["drift_mecroyance"] / 10, 1.0)
+
+    if result["drift_mecroyance"] < 1:
+        label, color = "Faible", "#16a34a"
+    elif result["drift_mecroyance"] < 3:
+        label, color = "Modérée", "#ca8a04"
+    elif result["drift_mecroyance"] < 6:
+        label, color = "Élevée", "#f97316"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {result['drift_mecroyance']}",
+        unsafe_allow_html=True
+    )
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Fermeture cognitive")
+
+        st.write(
+            "Cette jauge mesure un déséquilibre où la certitude affirmée dépasse "
+            "le savoir articulé et la compréhension intégrée."
+        )
+
+        st.markdown("**Formule utilisée**")
+        st.code("Fermeture cognitive = max(0, D - (G + N))")
+
+        st.markdown("**Avec les valeurs actuelles**")
+        st.write(
+            f"D = {result['D']:.2f} | "
+            f"G = {result['G']:.2f} | "
+            f"N = {result['N']:.2f}"
+        )
+
+        st.code(
+            f"max(0, {result['D']:.2f} - ({result['G']:.2f} + {result['N']:.2f})) "
+            f"= {result['drift_mecroyance']:.2f}"
+        )
+
+        st.markdown("**Interprétation**")
+        st.write(
+            "Plus ce score est élevé, plus le texte affirme avec certitude alors que "
+            "les bases de savoir et de compréhension restent insuffisantes."
+        )
+
+        st.markdown("**Normalisation graphique**")
+        st.code("value = min(drift_mecroyance / 10, 1.0)")
+
+    st.divider()
+
+    # -----------------------------
+    # Indice global de dérive cognitive
+    # -----------------------------
+    st.markdown("### Indice global de dérive cognitive")
+    st.caption("Synthèse des trois dérives cognitives.")
+    
+    global_score = result["global_cognitive_drift"]
+    global_value = min(global_score / 10, 1.0)
+    
+    if global_score < 1:
+        global_label, global_color = "Faible", "#16a34a"
+    elif global_score < 3:
+        global_label, global_color = "Modérée", "#ca8a04"
+    elif global_score < 6:
+        global_label, global_color = "Élevée", "#f97316"
+    else:
+        global_label, global_color = "Très élevée", "#dc2626"
+    
+    render_custom_gauge(global_value, global_color)
+    
+    st.markdown(
+        f"<b style='color:{global_color}'>{global_label}</b> — {global_score}",
+        unsafe_allow_html=True
+    )
+    
+    st.caption(result["cognitive_drift_interpretation"])
+    
+    
+    with st.popover("ℹ️ Comprendre cette jauge", use_container_width=True):
+        st.markdown("### Indice global de dérive cognitive")
+    
+        st.write(
+            "Cette jauge synthétise les trois dérives cognitives fondamentales. "
+            "Elle ne dit pas si le texte est vrai ou faux : elle mesure le degré de déséquilibre "
+            "entre savoir, compréhension et certitude."
+        )
+    
+        st.markdown("**Formule fondatrice**")
+        st.code("M = (G + N) - D")
+    
+        st.markdown("**Dérives utilisées**")
+    
+        st.code("Fermeture cognitive = max(0, -M)")
+        st.code("Pseudo-savoir = max(0, (G + D) - N)")
+        st.code("Intuition dogmatique = max(0, (N + D) - G)")
+    
+        st.markdown("**Formule de synthèse**")
+        st.code(
+            "dominant_value = max(fermeture, pseudo_savoir, intuition)\n"
+            "average_value = (fermeture + pseudo_savoir + intuition) / 3\n"
+            "global_drift = dominant_value * 0.6 + average_value * 0.4"
+        )
+    
+        st.markdown("**Valeurs actuelles**")
+        st.write(
+            f"Fermeture cognitive = {result['drift_mecroyance']:.2f} | "
+            f"Pseudo-savoir = {result['drift_pseudo_savoir']:.2f} | "
+            f"Intuition dogmatique = {result['drift_intuition_dogmatique']:.2f}"
+        )
+    
+        st.code(
+            f"dominant_value = {max(result['drift_mecroyance'], result['drift_pseudo_savoir'], result['drift_intuition_dogmatique']):.2f}\n"
+            f"average_value = {((result['drift_mecroyance'] + result['drift_pseudo_savoir'] + result['drift_intuition_dogmatique']) / 3):.2f}\n"
+            f"global_drift = {global_score:.2f}"
+        )
+    
+        st.markdown("**Résultat actuel**")
+        st.write(f"Score : **{global_score:.2f}**")
+        st.write(f"Niveau : **{global_label}**")
+        st.write(result["cognitive_drift_interpretation"])
+    
+        st.markdown("**Lecture**")
+        st.write(
+            "Plus l’indice est élevé, plus une dérive cognitive domine la structure du texte. "
+            "Le poids de 60 % donné à la dérive dominante évite qu’un signal fort soit noyé "
+            "par deux signaux faibles."
+        )
+    
+        st.markdown("**Échelle**")
+        st.write("🟢 Faible < 1 | 🟡 Modérée < 3 | 🟠 Élevée < 6 | 🔴 Très élevée ≥ 6")
+        st.divider()
+
+        st.markdown("""
+    <div style="text-align:center; margin:25px 0; color:#888;">
+    ──── 🧠 ────
+    </div>
+    """, unsafe_allow_html=True)
+    
+# =============================
+# 🗣️ 2. PRESSIONS DISCURSIVES
+# =============================
+st.subheader("🗣️ Pressions discursives")
+st.caption("Forces rhétoriques influençant la perception et l’interprétation du discours.")
+
+pd1, pd2, pd3 = st.columns(3)
+
+with pd1:
+    st.markdown("### Pression rhétorique")
     st.caption(
         "Cette jauge ne mesure pas un mensonge certain, mais l’intensité des procédés discursifs "
         "susceptibles d’orienter, de verrouiller ou de dramatiser un discours."
@@ -7423,433 +8816,68 @@ La certitude parait plus forte que les preuves disponibles, mais les signaux ne 
 
     st.caption("Pression rhétorique faible ⟵⟶ Pression rhétorique forte")
 
-    st.divider()
-    st.subheader("Cohérence trompeuse")
-    st.caption(
-        "Cette jauge mesure si le texte paraît cohérent tout en restant fragile, orienté ou insuffisamment vérifiable."
-    )
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Pression rhétorique")
 
-    value = result.get("deceptive_coherence", 0)
-    label = result.get("deceptive_coherence_label", "—")
-
-    if value < 0.25:
-        color = "#16a34a"
-    elif value < 0.50:
-        color = "#ca8a04"
-    elif value < 0.75:
-        color = "#f97316"
-    else:
-        color = "#dc2626"
-
-    render_custom_gauge(value, color)
-
-    st.markdown(
-        f"<b style='color:{color}'>{label}</b> — {round(value * 100, 1)}%",
-        unsafe_allow_html=True
-    )
-
-    st.caption("Cohérence apparente ⟵⟶ Cohérence trompeuse")
-
-    st.divider()
-    st.subheader("Jauge propagandiste")
-    st.caption(
-        "Cette jauge combine la tension cognitive, la pression rhétorique, "
-        "les motifs idéologiques détectés et le degré de fermeture cognitive. "
-        "Elle aide à estimer si le texte relève d’un simple discours orienté "
-        "ou d’une structure plus franchement propagandiste."
-    )
-
-    closure_for_discourse = (
-        (result["D"] * (1 + len(result["red_flags"]) / 5)) / (result["G"] + result["N"])
-        if (result["G"] + result["N"]) > 0 else 10
-    )
-
-    propaganda_value = compute_propaganda_gauge(
-        lie_gauge=gauge_value,
-        rhetorical_pressure=rp,
-        political_pattern_score=result["political_pattern_score"],
-        closure=closure_for_discourse
-    )
-
-    propaganda_label, propaganda_color, propaganda_text = interpret_propaganda_gauge(propaganda_value)
-
-    render_custom_gauge(propaganda_value, propaganda_color)
-
-    st.markdown(
-        f"<b style='color:{propaganda_color}'>{propaganda_label}</b> — {round(propaganda_value*100, 1)}%",
-        unsafe_allow_html=True
-    )
-
-    st.caption("Discours peu orienté ⟵⟶ Structure propagandiste")
-    st.caption(propaganda_text)
-
-    discursive_profile = interpret_discursive_profile(
-        lie_gauge=gauge_value,
-        rhetorical_pressure=rp,
-        propaganda_gauge=propaganda_value,
-        premise_score=result["premise_score"],
-        logic_confusion_score=result["logic_confusion_score"],
-        scientific_simulation_score=result["scientific_simulation_score"],
-        discursive_coherence_score=result["discursive_coherence_score"],
-    )
-
-    st.subheader("Profil discursif global")
-    st.write(discursive_profile)
-
-    st.divider()
-    st.subheader("Cartographie discursive complémentaire")
-
-    st.caption(
-        "Cette cartographie regroupe les principaux mécanismes discursifs détectables "
-        "dans un texte : jugements de valeur, prémisses implicites, structures propagandistes, "
-        "confusions logiques, simulations scientifiques, biais narratifs et mécanismes de "
-        "fermeture cognitive.\n\n"
-        "Elle est complétée par une analyse logique des raisonnements "
-        "(syllogismes, enthymèmes et sophismes) ainsi que par des indicateurs "
-        "stratégiques permettant d’identifier certaines formes de manipulation argumentative."
-    )
-
-    row1_col1, row1_col2, row1_col3 = st.columns(3)
-    row2_col1, row2_col2, row2_col3 = st.columns(3)
-    row3_col1, row3_col2, row3_col3 = st.columns(3)
-    row4_col1, row4_col2, row4_col3 = st.columns(3)
-    row5_col1, row5_col2, row5_col3 = st.columns(3)
-    row6_col1, row6_col2, row6_col3 = st.columns(3)
-    row7_col1, row7_col2, row7_col3 = st.columns(3)
-    row8_col1, row8_col2, row8_col3 = st.columns(3)
-    row9_col1, row9_col2, row9_col3 = st.columns(3)
-    row10_col1, row10_col2, row10_col3 = st.columns(3)
-    row11_col1, row11_col2, row11_col3 = st.columns(3)
-    row12_col1, row12_col2, row12_col3 = st.columns(3)
-    row13_col1, row13_col2, row13_col3 = st.columns(3)
-    row14_col1, row14_col2, row14_col3 = st.columns(3)
-    row15_col1, row15_col2 = st.columns(2)
-    
-
-    # -----------------------------
-    # 1) Qualifications normatives
-    # -----------------------------
-    with row1_col1:
-        st.markdown("### Qualification normative")
-        st.caption("Jugements de valeur présentés comme des faits.")
-
-        normative_value = result["normative_score"]
-
-        if normative_value < 0.20:
-            normative_label, normative_color = "Faible", "#16a34a"
-        elif normative_value < 0.40:
-            normative_label, normative_color = "Modérée", "#ca8a04"
-        elif normative_value < 0.70:
-            normative_label, normative_color = "Élevée", "#f97316"
-        else:
-            normative_label, normative_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(normative_value, normative_color)
-
-        st.markdown(
-            f"<b style='color:{normative_color}'>{normative_label}</b> — {round(normative_value * 100, 1)}%",
-            unsafe_allow_html=True
+        st.write(
+            "Cette jauge mesure l’intensité des procédés discursifs qui orientent "
+            "la perception du lecteur sans nécessairement reposer sur des preuves."
         )
-        st.caption(result["normative_interpretation"])
 
-        with st.expander("Voir les marqueurs", expanded=False):
-            normative_terms = result.get("normative_terms", [])
-            judgment_markers = result.get("normative_judgment_markers", [])
-
-            if not normative_terms and not judgment_markers:
-                st.info("Aucun marqueur saillant détecté.")
-            else:
-                if normative_terms:
-                    st.markdown("**Termes normatifs**")
-                    for term in normative_terms:
-                        st.error(term)
-                if judgment_markers:
-                    st.markdown("**Marqueurs de jugement**")
-                    for term in judgment_markers:
-                        st.warning(term)
-
-    # -----------------------------
-    # 2) Prémisses idéologiques implicites
-    # -----------------------------
-    with row1_col2:
-        st.markdown("### Prémisses implicites")
-        st.caption("Idées présentées comme évidentes sans démonstration.")
-
-        premise_value = result["premise_score"]
-
-        if premise_value < 0.20:
-            premise_label, premise_color = "Faible", "#16a34a"
-        elif premise_value < 0.40:
-            premise_label, premise_color = "Modérée", "#ca8a04"
-        elif premise_value < 0.70:
-            premise_label, premise_color = "Élevée", "#f97316"
-        else:
-            premise_label, premise_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(premise_value, premise_color)
-
-        st.markdown(
-            f"<b style='color:{premise_color}'>{premise_label}</b> — {round(premise_value * 100, 1)}%",
-            unsafe_allow_html=True
+        st.markdown("**Principe**")
+        st.write(
+            "Chaque mécanisme rhétorique détecté — certitude, dramatisation, ennemi, causalité, etc. — "
+            "augmente la pression globale selon un poids spécifique."
         )
-        st.caption(result["premise_interpretation"])
 
-        with st.expander("Voir les marqueurs", expanded=False):
-            premise_markers = result.get("premise_markers", [])
-
-            if not premise_markers:
-                st.info("Aucune prémisse implicite saillante détectée.")
-            else:
-                for marker in premise_markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 3) Propagande narrative
-    # -----------------------------
-    with row1_col3:
-        st.markdown("### Narration propagandiste")
-        st.caption("Urgence, ennemi abstrait, certitude et charge émotionnelle.")
-
-        propaganda_value = result["propaganda_score"]
-
-        if propaganda_value < 0.20:
-            propaganda_label, propaganda_color = "Faible", "#16a34a"
-        elif propaganda_value < 0.40:
-            propaganda_label, propaganda_color = "Modérée", "#ca8a04"
-        elif propaganda_value < 0.70:
-            propaganda_label, propaganda_color = "Élevée", "#f97316"
-        else:
-            propaganda_label, propaganda_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(propaganda_value, propaganda_color)
-
-        st.markdown(
-            f"<b style='color:{propaganda_color}'>{propaganda_label}</b> — {round(propaganda_value * 100, 1)}%",
-            unsafe_allow_html=True
+        st.markdown("**Formule utilisée**")
+        st.code(
+            "weighted_score = Σ(occurrences × poids)\n"
+            "pression = min(weighted_score / 10, 1.0)"
         )
-        st.caption(result["propaganda_interpretation"])
 
-        with st.expander("Voir les marqueurs", expanded=False):
-            enemy_terms = result.get("propaganda_enemy_terms", [])
-            urgency_terms = result.get("propaganda_urgency_terms", [])
-            certainty_terms = result.get("propaganda_certainty_terms", [])
-            emotional_terms = result.get("propaganda_emotional_terms", [])
-
-            if not any([enemy_terms, urgency_terms, certainty_terms, emotional_terms]):
-                st.info("Aucun marqueur narratif saillant détecté.")
-            else:
-                if enemy_terms:
-                    st.markdown("**Ennemi / bloc adverse**")
-                    for term in enemy_terms:
-                        st.error(term)
-
-                if urgency_terms:
-                    st.markdown("**Urgence / menace**")
-                    for term in urgency_terms:
-                        st.warning(term)
-
-                if certainty_terms:
-                    st.markdown("**Certitude absolue**")
-                    for term in certainty_terms:
-                        st.warning(term)
-
-                if emotional_terms:
-                    st.markdown("**Charge émotionnelle**")
-                    for term in emotional_terms:
-                        st.error(term)
-
-        # -----------------------------
-    # 4) Cohérence discursive
-    # -----------------------------
-    with row2_col1:
-        st.markdown("### Cohérence discursive")
-        st.caption("Solidité interne du texte, indépendamment de sa vérifiabilité.")
-
-        coherence_value = result["discursive_coherence_score"] / 20
-
-        if coherence_value < 0.20:
-            coherence_label, coherence_color = "Faible", "#dc2626"
-        elif coherence_value < 0.40:
-            coherence_label, coherence_color = "Limitée", "#f97316"
-        elif coherence_value < 0.65:
-            coherence_label, coherence_color = "Correcte", "#ca8a04"
-        elif coherence_value < 0.85:
-            coherence_label, coherence_color = "Solide", "#84cc16"
-        else:
-            coherence_label, coherence_color = "Très forte", "#16a34a"
-
-        render_custom_gauge(coherence_value, coherence_color)
-
-        st.markdown(
-            f"<b style='color:{coherence_color}'>{coherence_label}</b> — {result['discursive_coherence_score']}/20",
-            unsafe_allow_html=True
+        st.markdown("**Poids des mécanismes**")
+        st.code(
+            "certitude = 1.2\n"
+            "autorite = 1.0\n"
+            "dramatisation = 1.3\n"
+            "generalisation = 1.1\n"
+            "naturalisation = 1.4\n"
+            "ennemi = 1.5\n"
+            "causalite = 1.4\n"
+            "moralisation = 1.2"
         )
-        st.caption(result["discursive_coherence_label"])
 
-        with st.expander("Voir le détail", expanded=False):
-            d = result["discursive_coherence_details"]
-            st.write(f"**Logique discursive** : {d['logic_score']}/5")
-            st.write(f"**Stabilité thématique** : {d['stability_score']}/4")
-            st.write(f"**Longueur utile** : {d['length_score']}/5")
-            st.write(f"**Cohérence entre paragraphes** : {d['paragraph_score']}/4")
-            st.write(f"**Pénalité de contradiction** : -{d['contradiction_penalty']}")
-            st.write(f"**Pénalité de rupture thématique** : -{d['topic_shift_penalty']}")
-            if d["top_keywords"]:
-                st.write("**Mots-clés dominants**")
-                for word, count in d["top_keywords"]:
-                    st.write(f"- {word} ({count})")
+        st.markdown("**Valeur actuelle**")
+        st.write(f"Pression rhétorique = {round(rp * 100, 1)}%")
+        st.code(f"pression = {rp:.3f}")
 
-    # -----------------------------
-    # 5) Confusion logique
-    # -----------------------------
-    with row2_col2:
-        st.markdown("### Confusion logique")
-        st.caption("Causalité abusive, extrapolation, prédiction absolue.")
-
-        logic_value = result["logic_confusion_score"]
-
-        if logic_value < 0.20:
-            logic_label, logic_color = "Faible", "#16a34a"
-        elif logic_value < 0.40:
-            logic_label, logic_color = "Modérée", "#ca8a04"
-        elif logic_value < 0.70:
-            logic_label, logic_color = "Élevée", "#f97316"
-        else:
-            logic_label, logic_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(logic_value, logic_color)
-
-        st.markdown(
-            f"<b style='color:{logic_color}'>{logic_label}</b> — {round(logic_value * 100, 1)}%",
-            unsafe_allow_html=True
+        st.markdown("**Interprétation**")
+        st.write(
+            "Plus la valeur est élevée, plus le discours utilise des leviers rhétoriques "
+            "pour orienter la conclusion plutôt que de la démontrer."
         )
-        st.caption(result["logic_confusion_interpretation"])
 
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("logic_confusion_markers", [])
-            if not markers:
-                st.info("Aucune confusion logique saillante détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 6) Scientificité rhétorique
-    # -----------------------------
-    with row2_col3:
-        st.markdown("### Scientificité rhétorique")
-        st.caption("Simulation d’objectivité scientifique sans base identifiable.")
-
-        sim_value = result["scientific_simulation_score"]
-
-        if sim_value < 0.20:
-            sim_label, sim_color = "Faible", "#16a34a"
-        elif sim_value < 0.40:
-            sim_label, sim_color = "Modérée", "#ca8a04"
-        elif sim_value < 0.70:
-            sim_label, sim_color = "Élevée", "#f97316"
-        else:
-            sim_label, sim_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(sim_value, sim_color)
-
-        st.markdown(
-            f"<b style='color:{sim_color}'>{sim_label}</b> — {round(sim_value * 100, 1)}%",
-            unsafe_allow_html=True
+        st.markdown("**Lecture**")
+        st.write(
+            "🟢 Faible : discours neutre\n"
+            "🟡 Modérée : orientation légère\n"
+            "🟠 Élevée : discours orienté\n"
+            "🔴 Très élevée : forte pression narrative"
         )
-        st.caption(result["scientific_simulation_interpretation"])
 
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("scientific_simulation_markers", [])
-            if not markers:
-                st.info("Aucun marqueur de scientificité rhétorique détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 7) Fausse causalité
-    # -----------------------------
-    with row3_col1:
-        st.markdown("### Fausse causalité")
-        st.caption("Liens causaux affirmés plus vite qu'ils ne sont démontrés.")
-
-        causal_value = result["causal_overreach_score"]
-
-        if causal_value < 0.20:
-            causal_label, causal_color = "Faible", "#16a34a"
-        elif causal_value < 0.40:
-            causal_label, causal_color = "Modérée", "#ca8a04"
-        elif causal_value < 0.70:
-            causal_label, causal_color = "Élevée", "#f97316"
-        else:
-            causal_label, causal_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(causal_value, causal_color)
-
-        st.markdown(
-            f"<b style='color:{causal_color}'>{causal_label}</b> — {round(causal_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["causal_overreach_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("causal_overreach_markers", [])
-            if not markers:
-                st.info("Aucun marqueur de causalité abusive détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 8) Autorité vague
-    # -----------------------------
-    with row3_col2:
-        st.markdown("### Autorité vague")
-        st.caption("Appels à des experts, études ou spécialistes sans source précise.")
-
-        vague_auth_value = result["vague_authority_score"]
-
-        if vague_auth_value < 0.20:
-            vague_auth_label, vague_auth_color = "Faible", "#16a34a"
-        elif vague_auth_value < 0.40:
-            vague_auth_label, vague_auth_color = "Modérée", "#ca8a04"
-        elif vague_auth_value < 0.70:
-            vague_auth_label, vague_auth_color = "Élevée", "#f97316"
-        else:
-            vague_auth_label, vague_auth_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(vague_auth_value, vague_auth_color)
-
-        st.markdown(
-            f"<b style='color:{vague_auth_color}'>{vague_auth_label}</b> — {round(vague_auth_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["vague_authority_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("vague_authority_markers", [])
-            if not markers:
-                st.info("Aucun marqueur d'autorité vague détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 9) Charge émotionnelle
-    # -----------------------------
-    with row3_col3:
+    with pd2:
         st.markdown("### Charge émotionnelle")
         st.caption("Intensité affective du lexique utilisé pour orienter la lecture.")
 
         emotional_value = result["emotional_intensity_score"]
 
         if emotional_value < 0.15:
-            emotional_label, emotional_color = "Faible", "#16a34a"
+            emotional_label, emotional_color = "Faible", "#ca8a04"
         elif emotional_value < 0.35:
-            emotional_label, emotional_color = "Modérée", "#ca8a04"
+            emotional_label, emotional_color = "Modérée", "#f97316"
         elif emotional_value < 0.60:
-            emotional_label, emotional_color = "Élevée", "#f97316"
+            emotional_label, emotional_color = "Élevée", "#ea580c"
         else:
             emotional_label, emotional_color = "Très élevée", "#dc2626"
 
@@ -7869,1289 +8897,1939 @@ La certitude parait plus forte que les preuves disponibles, mais les signaux ne 
                 for marker in markers:
                     st.warning(marker)
 
-    # -----------------------------
-    # 10) Généralisation abusive
-    # -----------------------------
-    with row4_col1:
-        st.markdown("### Généralisation abusive")
-        st.caption("Simplification du réel par catégories globales.")
-
-        generalization_value = result["generalization_score"]
-
-        if generalization_value < 0.20:
-            generalization_label, generalization_color = "Faible", "#16a34a"
-        elif generalization_value < 0.40:
-            generalization_label, generalization_color = "Modérée", "#ca8a04"
-        elif generalization_value < 0.70:
-            generalization_label, generalization_color = "Élevée", "#f97316"
-        else:
-            generalization_label, generalization_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(generalization_value, generalization_color)
-
-        st.markdown(
-            f"<b style='color:{generalization_color}'>{generalization_label}</b> — {round(generalization_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["generalization_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("generalization_markers", [])
-            if not markers:
-                st.info("Aucune généralisation abusive notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 11) Ennemi abstrait
-    # -----------------------------
-    with row4_col2:
-        st.markdown("### Ennemi abstrait")
-        st.caption("Construction d’un adversaire flou ou globalisant.")
-
-        abstract_enemy_value = result["abstract_enemy_score"]
-
-        if abstract_enemy_value < 0.20:
-            abstract_enemy_label, abstract_enemy_color = "Faible", "#16a34a"
-        elif abstract_enemy_value < 0.40:
-            abstract_enemy_label, abstract_enemy_color = "Modérée", "#ca8a04"
-        elif abstract_enemy_value < 0.70:
-            abstract_enemy_label, abstract_enemy_color = "Élevée", "#f97316"
-        else:
-            abstract_enemy_label, abstract_enemy_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(abstract_enemy_value, abstract_enemy_color)
-
-        st.markdown(
-            f"<b style='color:{abstract_enemy_color}'>{abstract_enemy_label}</b> — {round(abstract_enemy_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["abstract_enemy_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("abstract_enemy_markers", [])
-            if not markers:
-                st.info("Aucun ennemi abstrait notable détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 12) Certitude absolue
-    # -----------------------------
-    with row4_col3:
-        st.markdown("### Certitude absolue")
-        st.caption("Rigidité rhétorique et fermeture interprétative.")
-
-        certainty_value = result["certainty_score"]
-
-        if certainty_value < 0.20:
-            certainty_label, certainty_color = "Faible", "#16a34a"
-        elif certainty_value < 0.40:
-            certainty_label, certainty_color = "Modérée", "#ca8a04"
-        elif certainty_value < 0.70:
-            certainty_label, certainty_color = "Élevée", "#f97316"
-        else:
-            certainty_label, certainty_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(certainty_value, certainty_color)
-
-        st.markdown(
-            f"<b style='color:{certainty_color}'>{certainty_label}</b> — {round(certainty_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["certainty_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("certainty_markers", [])
-            if not markers:
-                st.info("Aucun marqueur fort de certitude absolue détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-        # -----------------------------
-    # 13) Faux consensus
-    # -----------------------------
-    with row5_col1:
-        st.markdown("### Faux consensus")
-        st.caption("Simulation d’un accord collectif présenté comme évident.")
-
-        false_consensus_value = result["false_consensus_score"]
-
-        if false_consensus_value < 0.15:
-            false_consensus_label, false_consensus_color = "Faible", "#16a34a"
-        elif false_consensus_value < 0.35:
-            false_consensus_label, false_consensus_color = "Modérée", "#ca8a04"
-        elif false_consensus_value < 0.60:
-            false_consensus_label, false_consensus_color = "Élevée", "#f97316"
-        else:
-            false_consensus_label, false_consensus_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(false_consensus_value, false_consensus_color)
-
-        st.markdown(
-            f"<b style='color:{false_consensus_color}'>{false_consensus_label}</b> — {round(false_consensus_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["false_consensus_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("false_consensus_markers", [])
-            if not markers:
-                st.info("Aucun faux consensus notable détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-
-    # -----------------------------
-    # 14) Opposition binaire
-    # -----------------------------
-    with row5_col2:
-        st.markdown("### Opposition binaire")
-        st.caption("Découpage du discours en camps antagonistes.")
-
-        binary_value = result["binary_opposition_score"]
-
-        if binary_value < 0.15:
-            binary_label, binary_color = "Faible", "#16a34a"
-        elif binary_value < 0.35:
-            binary_label, binary_color = "Modérée", "#ca8a04"
-        elif binary_value < 0.60:
-            binary_label, binary_color = "Élevée", "#f97316"
-        else:
-            binary_label, binary_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(binary_value, binary_color)
-
-        st.markdown(
-            f"<b style='color:{binary_color}'>{binary_label}</b> — {round(binary_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["binary_opposition_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("binary_opposition_markers", [])
-            if not markers:
-                st.info("Aucune opposition binaire notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-
-    # -----------------------------
-    # 15) Amplification de menace
-    # -----------------------------
-    with row5_col3:
-        st.markdown("### Amplification de menace")
-        st.caption("Exagération dramatique du danger ou de la gravité.")
-
-        threat_value = result["threat_amplification_score"]
-
-        if threat_value < 0.15:
-            threat_label, threat_color = "Faible", "#16a34a"
-        elif threat_value < 0.35:
-            threat_label, threat_color = "Modérée", "#ca8a04"
-        elif threat_value < 0.60:
-            threat_label, threat_color = "Élevée", "#f97316"
-        else:
-            threat_label, threat_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(threat_value, threat_color)
-
-        st.markdown(
-            f"<b style='color:{threat_color}'>{threat_label}</b> — {round(threat_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["threat_amplification_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("threat_amplification_markers", [])
-            if not markers:
-                st.info("Aucune amplification de menace notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-        # -----------------------------
-    # 19) Fausse analogie
-    # -----------------------------
-    with row7_col1:
-        st.markdown("### Fausse analogie")
-        st.caption("Comparaisons trompeuses qui court-circuitent l’analyse.")
-
-        value = result["false_analogy_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
-        st.caption(result["false_analogy_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("false_analogy_markers", [])
-            if not markers:
-                st.info("Aucune fausse analogie notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 20) Surinterprétation factuelle
-    # -----------------------------
-    with row7_col2:
-        st.markdown("### Surinterprétation factuelle")
-        st.caption("Conclusions excessives tirées à partir d’indices partiels.")
-
-        value = result["factual_overinterpretation_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
-        st.caption(result["factual_overinterpretation_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("factual_overinterpretation_markers", [])
-            if not markers:
-                st.info("Aucune surinterprétation factuelle notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 21) Dissonance interne
-    # -----------------------------
-    with row7_col3:
-        st.markdown("### Dissonance interne")
-        st.caption("Contradictions ou incompatibilités au sein du même discours.")
-
-        value = result["internal_dissonance_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
-        st.caption(result["internal_dissonance_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("internal_dissonance_markers", [])
-            if not markers:
-                st.info("Aucune dissonance interne notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 22) Saturation normative
-    # -----------------------------
-    with row8_col1:
-        st.markdown("### Saturation normative")
-        st.caption("Accumulation de jugements moraux à la place de l’analyse.")
-
-        value = result["normative_saturation_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
-        st.caption(result["normative_saturation_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("normative_saturation_markers", [])
-            if not markers:
-                st.info("Aucune saturation normative notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 23) Rigidité doxique
-    # -----------------------------
-    with row8_col2:
-        st.markdown("### Rigidité doxique")
-        st.caption("Degré de fermeture du texte par excès de certitude partagée.")
-
-        value = result["doxic_rigidity_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
-        st.caption(result["doxic_rigidity_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("doxic_rigidity_markers", [])
-            if not markers:
-                st.info("Aucune rigidité doxique notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 24) Surdétermination narrative
-    # -----------------------------
-    with row8_col3:
-        st.markdown("### Surdétermination narrative")
-        st.caption("Réduction du réel à un récit unique supposé tout expliquer.")
-
-        value = result["narrative_overdetermination_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
-        st.caption(result["narrative_overdetermination_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("narrative_overdetermination_markers", [])
-            if not markers:
-                st.info("Aucune surdétermination narrative notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-        # -----------------------------
-    # 16) Glissement sémantique
-    # -----------------------------
-    with row6_col1:
-        st.markdown("### Glissement sémantique")
-        st.caption("Recadrage lexical stratégique du réel par des termes orientés.")
-
-        semantic_value = result["semantic_shift_score"]
-
-        if semantic_value < 0.20:
-            semantic_label, semantic_color = "Faible", "#16a34a"
-        elif semantic_value < 0.40:
-            semantic_label, semantic_color = "Modérée", "#ca8a04"
-        elif semantic_value < 0.70:
-            semantic_label, semantic_color = "Élevée", "#f97316"
-        else:
-            semantic_label, semantic_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(semantic_value, semantic_color)
-
-        st.markdown(
-            f"<b style='color:{semantic_color}'>{semantic_label}</b> — {round(semantic_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["semantic_shift_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("semantic_shift_markers", [])
-            if not markers:
-                st.info("Aucun glissement sémantique notable détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-        # -----------------------------
-    # 17) Prémisses idéologiques implicites
-    # -----------------------------
-    with row6_col2:
-        st.markdown("### Prémisses idéologiques")
-        st.caption("Présupposés idéologiques présentés comme allant de soi.")
-
-        ideological_value = result["ideological_premise_score"]
-
-        if ideological_value < 0.20:
-            ideological_label, ideological_color = "Faible", "#16a34a"
-        elif ideological_value < 0.40:
-            ideological_label, ideological_color = "Modérée", "#ca8a04"
-        elif ideological_value < 0.70:
-            ideological_label, ideological_color = "Élevée", "#f97316"
-        else:
-            ideological_label, ideological_color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(ideological_value, ideological_color)
-
-        st.markdown(
-            f"<b style='color:{ideological_color}'>{ideological_label}</b> — {round(ideological_value * 100, 1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["ideological_premise_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("ideological_premise_markers", [])
-            if not markers:
-                st.info("Aucune prémisse idéologique saillante détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-        # -----------------------------
-    # 18) Clôture cognitive
-    # -----------------------------
-    with row6_col3:
-        st.markdown("### Clôture cognitive")
-        st.caption("Degré de verrouillage du discours par excès de certitude.")
-
-        closure_local = (
-            (result["D"] * (1 + len(result["red_flags"]) / 5)) / (result["G"] + result["N"])
-            if (result["G"] + result["N"]) > 0 else 10
-        )
-
-        closure_value = min(closure_local / 1.5, 1.0)
-
-        if closure_local < 0.40:
-            closure_label, closure_color = "Ouverte", "#16a34a"
-        elif closure_local < 0.75:
-            closure_label, closure_color = "Modérée", "#ca8a04"
-        elif closure_local < 1.10:
-            closure_label, closure_color = "Élevée", "#f97316"
-        else:
-            closure_label, closure_color = "Critique", "#dc2626"
-
-        render_custom_gauge(closure_value, closure_color)
-
-        st.markdown(
-            f"<b style='color:{closure_color}'>{closure_label}</b> — {round(closure_local, 2)}",
-            unsafe_allow_html=True
-        )
-        st.caption("Plus la certitude domine G + N, plus le texte se ferme.")
-
-        # -----------------------------
-    # 25) Syllogismes détectés
-    # -----------------------------
-    with row9_col1:
-        st.markdown("### Syllogismes détectés")
-        st.caption("Structures logiques explicites repérées dans le texte.")
-
-        value = min(result["syllogism_signal"] / 2, 1.0)
-
-        if result["syllogism_signal"] == 0:
-            label, color = "Aucun signal", "#16a34a"
-        elif result["syllogism_signal"] == 1:
-            label, color = "Signal faible", "#ca8a04"
-        elif result["syllogism_signal"] <= 3:
-            label, color = "Signal modéré", "#f97316"
-        else:
-            label, color = "Signal fort", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{result['syllogism_label']}</b> — {result['syllogism_signal']} repéré(s)",
-            unsafe_allow_html=True
-        )
-        st.caption("Détection de prémisses et conclusion enchaînées.")
-
-    # -----------------------------
-    # 26) Enthymèmes détectés
-    # -----------------------------
-    with row9_col2:
-        st.markdown("### Enthymèmes détectés")
-        st.caption("Raisonnements incomplets ou implicites repérés dans le texte.")
-
-        value = min(result["enthymeme_signal"] / 4, 1.0)
-
-        if result["enthymeme_signal"] == 0:
-            label, color = "Aucun signal", "#16a34a"
-        elif result["enthymeme_signal"] == 1:
-            label, color = "Signal faible", "#ca8a04"
-        elif result["enthymeme_signal"] <= 3:
-            label, color = "Signal modéré", "#f97316"
-        else:
-            label, color = "Signal fort", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{result['enthymeme_label']}</b> — {result['enthymeme_signal']} repéré(s)",
-            unsafe_allow_html=True
-        )
-        st.caption("Conclusion présente, prémisse partiellement implicite.")
-
-    # -----------------------------
-    # 27) Sophismes syllogistiques
-    # -----------------------------
-    with row9_col3:
-        st.markdown("### Sophismes syllogistiques")
-        st.caption("Failles formelles ou conclusions invalides dans les raisonnements.")
-
-        value = min(result["fallacy_signal"] / 2, 1.0)
-
-        if result["fallacy_signal"] == 0:
-            label, color = "Aucun signal", "#16a34a"
-        elif result["fallacy_signal"] == 1:
-            label, color = "Signal faible", "#ca8a04"
-        elif result["fallacy_signal"] <= 3:
-            label, color = "Signal modéré", "#f97316"
-        else:
-            label, color = "Signal fort", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{result['fallacy_label']}</b> — {result['fallacy_signal']} repéré(s)",
-            unsafe_allow_html=True
-        )
-        st.caption("Terme moyen absent, forme invalide ou conclusion trop forte.")
-
         
-    with row10_col1:
-        st.markdown("### Pétition de principe")
-        st.caption("Conclusion répétée comme si elle constituait une preuve.")
-
-        value = result["petition_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["petition_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("petition_markers", [])
-            if not markers:
-                st.info("Aucune pétition de principe notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row10_col2:
-        st.markdown("### Fausse causalité (simple)")
-        st.caption("Lien causal affirmé sans démonstration suffisante.")
-
-        value = result["false_causality_basic_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["false_causality_basic_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("false_causality_basic_markers", [])
-            if not markers:
-                st.info("Aucune fausse causalité simple notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row10_col3:
-        st.markdown("### Généralisation abusive")
-        st.caption("Passage abusif de cas particuliers à une règle générale.")
-
-        value = result["hasty_generalization_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["hasty_generalization_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("hasty_generalization_markers", [])
-            if not markers:
-                st.info("Aucune généralisation abusive notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row11_col1:
-        st.markdown("### Autorité vague (simple)")
-        st.caption("Autorité invoquée sans source clairement traçable.")
-
-        value = result["vague_authority_basic_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["vague_authority_basic_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("vague_authority_basic_markers", [])
-            if not markers:
-                st.info("Aucune autorité vague simple notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row11_col2:
-        st.markdown("### Faux dilemme")
-        st.caption("Réduction artificielle du réel à deux options.")
-
-        value = result["false_dilemma_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["false_dilemma_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("false_dilemma_markers", [])
-            if not markers:
-                st.info("Aucun faux dilemme notable détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row12_col1:
-        st.markdown("### Qualification normative")
-        st.caption("Usage de jugements de valeur comme substitut d’argument.")
-
-        value = result["normative_qualification_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["normative_qualification_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("normative_qualification_markers", [])
-            if not markers:
-                st.info("Aucune qualification normative notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row12_col2:
-        st.markdown("### Prémisse idéologique implicite")
-        st.caption("Présupposé idéologique utilisé comme point de départ du raisonnement.")
-
-        value = result["ideological_premise_sophism_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["ideological_premise_sophism_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("ideological_premise_sophism_markers", [])
-            if not markers:
-                st.info("Aucune prémisse idéologique implicite notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row12_col3:
-        st.markdown("### Faux consensus renforcé")
-        st.caption("Simulation d’un accord collectif présenté comme preuve.")
-
-        value = result["false_consensus_strong_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["false_consensus_strong_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("false_consensus_strong_markers", [])
-            if not markers:
-                st.info("Aucun faux consensus renforcé notable détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row13_col1:
-        st.markdown("### Argument de nature")
-        st.caption("Le caractère naturel est utilisé comme argument de vérité ou de valeur.")
-
-        value = result["argument_from_nature_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["argument_from_nature_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("argument_from_nature_markers", [])
-            if not markers:
-                st.info("Aucun argument de nature notable détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row13_col2:
-        st.markdown("### Confusion descriptif / normatif")
-        st.caption("Glissement d’une description vers une injonction sans justification suffisante.")
-
-        value = result["descriptive_normative_confusion_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["descriptive_normative_confusion_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("descriptive_normative_confusion_markers", [])
-            if not markers:
-                st.info("Aucune confusion descriptif / normatif notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    with row13_col3:
-        st.markdown("### Cherry Picking")
-        st.caption("Sélection biaisée d’exemples, de cas ou de preuves allant dans un seul sens.")
-
-        value = result["cherry_picking_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["cherry_picking_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("cherry_picking_markers", [])
-            omissions = result.get("cherry_picking_omission_markers", [])
-
-            if not markers and not omissions:
-                st.info("Aucune sélection biaisée notable détectée.")
-            else:
-                if markers:
-                    st.markdown("**Exemples isolés / preuves uniques**")
-                    for marker in markers:
-                        st.warning(marker)
-
-                if omissions:
-                    st.markdown("**Indices d’omission stratégique**")
-                    for marker in omissions:
-                        st.error(marker)
-
-        # -----------------------------
-    # 39) Victimisation stratégique
-    # -----------------------------
-    with row14_col1:
-        st.markdown("### Victimisation stratégique")
-        st.caption("Mise en scène d’une persécution ou d’un empêchement de dire.")
-
-        value = result["victimization_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["victimization_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("victimization_markers", [])
-            if not markers:
-                st.info("Aucune victimisation stratégique notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 40) Polarisation morale
-    # -----------------------------
-    with row14_col2:
-        st.markdown("### Polarisation morale")
-        st.caption("Découpage moral du réel en camps du bien et du mal.")
-
-        value = result["moral_polarization_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["moral_polarization_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("moral_polarization_markers", [])
-            if not markers:
-                st.info("Aucune polarisation morale notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 41) Simplification stratégique
-    # -----------------------------
-    with row14_col3:
-        st.markdown("### Simplification stratégique")
-        st.caption("Réduction d’une réalité complexe à une cause unique ou simple.")
-
-        value = result["strategic_simplification_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["strategic_simplification_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("strategic_simplification_markers", [])
-            if not markers:
-                st.info("Aucune simplification stratégique notable détectée.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 42) Frame shift
-    # -----------------------------
-    with row15_col1:
-        st.markdown("### Frame shift")
-        st.caption("Déplacement du cadre du débat pour orienter l’interprétation.")
-
-        value = result["frame_shift_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["frame_shift_interpretation"])
-
-        with st.expander("Voir les marqueurs", expanded=False):
-            markers = result.get("frame_shift_markers", [])
-            if not markers:
-                st.info("Aucun déplacement de cadre notable détecté.")
-            else:
-                for marker in markers:
-                    st.warning(marker)
-
-    # -----------------------------
-    # 43) Asymétrie argumentative
-    # -----------------------------
-    with row15_col2:
-        st.markdown("### Asymétrie argumentative")
-        st.caption("Le texte attaque davantage qu’il ne démontre.")
-
-        value = result["argument_asymmetry_score"]
-
-        if value < 0.15:
-            label, color = "Faible", "#16a34a"
-        elif value < 0.35:
-            label, color = "Modérée", "#ca8a04"
-        elif value < 0.60:
-            label, color = "Élevée", "#f97316"
-        else:
-            label, color = "Très élevée", "#dc2626"
-
-        render_custom_gauge(value, color)
-        st.markdown(
-            f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-            unsafe_allow_html=True
-        )
-        st.caption(result["argument_asymmetry_interpretation"])
-        st.caption(
-            f"Attaques : {result['argument_attack_count']} | Appuis logiques : {result['argument_support_count']}"
-        )
-
-    with st.expander("Voir les manœuvres discursives détectées", expanded=False):
-        if result["political_pattern_score"] == 0:
-            st.info("Aucun marqueur rhétorique politique saillant détecté.")
-        else:
-            st.metric("Score global de manœuvres discursives", result["political_pattern_score"])
-
-            labels = {
-                "certitude": "Certitude performative",
-                "autorite": "Autorité vague institutionnelle",
-                "autorite_academique": "Autorité académique vague",
-                "dramatisation": "Dramatisation politique",
-                "generalisation": "Généralisation abusive",
-                "naturalisation": "Naturalisation idéologique",
-                "ennemi": "Ennemi abstrait",
-                "victimisation": "Victimisation discursive",
-                "moralisation": "Moralisation politique",
-                "moralisation_discours": "Moralisation du discours",
-                "urgence": "Urgence injonctive",
-                "promesse": "Promesse excessive",
-                "populisme": "Populisme anti-élite",
-                "progressisme_identitaire": "Progressisme identitaire",
-                "socialisme_communisme": "Cadre socialiste / communiste",
-                "delegitimation": "Délégitimation adverse",
-                "dilution": "Dilution de responsabilité",
-                "causalite": "Causalité implicite ou non démontrée",
-            }
-
-            for cat, count in result["political_results"].items():
-                if count > 0:
-                    st.markdown(f"**{labels.get(cat, cat)}** : {count}")
-                    st.caption(", ".join(result["matched_terms"][cat]))
-
-    with st.expander(T["strengths_detected"], expanded=True):
-        if result["strengths"]:
-            for item in result["strengths"]:
-                st.success(item)
-        else:
-            st.info(T["few_strong_signals"])
-
-    with st.expander(T["weaknesses_detected"], expanded=True):
-        if result["weaknesses"]:
-            for item in result["weaknesses"]:
-                st.error(item)
-        else:
-            st.success(T["no_major_weakness"])
-
+        with st.popover("ℹ️ Comprendre cette jauge"):
+            st.markdown("### Charge émotionnelle")
+        
+            st.write(
+                "Cette jauge mesure l’intensité affective du vocabulaire utilisé. "
+                "Elle repère les mots qui peuvent orienter la lecture par l’émotion plutôt que par la démonstration."
+            )
+        
+            st.markdown("**Principe**")
+            st.write(
+                "Le texte est comparé à une liste de marqueurs émotionnels. "
+                "Chaque terme détecté augmente le score de charge émotionnelle."
+            )
+        
+            st.markdown("**Formule utilisée**")
+            st.code(
+                "hits = termes émotionnels détectés\n"
+                "score = min(len(hits) * 2.2 / 10, 1.0)"
+            )
+        
+            st.markdown("**Valeur actuelle**")
+            st.write(f"Score : **{round(emotional_value * 100, 1)}%**")
+            st.write(f"Niveau : **{emotional_label}**")
+        
+            st.code(
+                f"score = min({len(result.get('emotional_intensity_markers', []))} × 2.2 / 10, 1.0)\n"
+                f"score = {emotional_value:.3f}"
+            )
+        
+            st.markdown("**Interprétation actuelle**")
+            st.write(result["emotional_intensity_interpretation"])
+        
+            st.markdown("**Lecture**")
+            st.write(
+                "🟢 Faible : vocabulaire peu chargé émotionnellement\n"
+                "🟡 Modérée : quelques marqueurs affectifs\n"
+                "🟠 Élevée : charge émotionnelle notable\n"
+                "🔴 Très élevée : émotion fortement mobilisée pour orienter la lecture"
+            )
+        
+            st.markdown("**Attention**")
+            st.write(
+                "Une charge émotionnelle élevée ne signifie pas que le texte est faux. "
+                "Elle indique seulement que le discours agit fortement sur l’affect du lecteur."
+            )
+    
+        with pd3:
+            st.markdown("### Asymétrie argumentative")
+            # jauge ici
+        
     st.divider()
-    st.subheader("Structure cognitive du texte analysé")
-    st.info(T["llm_intro"])
+    
+# =============================
+# 🧩 3. STRUCTURE DU RAISONNEMENT
+# =============================
+st.subheader("🧩 Structure du raisonnement")
+st.caption("Analyse de la cohérence interne du discours, indépendamment de sa vérifiabilité.")
 
-    cog = Cognition(result["G"], result["N"], result["D"])
-    overconfidence = result["D"] - (result["G"] + result["N"])
-    calibration = result["D"] / (result["G"] + result["N"]) if (result["G"] + result["N"]) > 0 else 10
-    revisability = (result["G"] + result["N"] + result["V"]) - result["D"]
-    closure = (result["D"] * (1 + len(result["red_flags"]) / 5)) / (result["G"] + result["N"]) if (result["G"] + result["N"]) > 0 else 10
+sr1, sr2 = st.columns(2)
 
-    c1, c2 = st.columns(2)
-    c1.metric(T["overconfidence"], round(overconfidence, 2))
-    c2.metric(T["calibration"], round(calibration, 2))
-    c3, c4 = st.columns(2)
-    c3.metric(T["revisability"], round(revisability, 2))
-    c4.metric(T["cognitive_closure"], round(closure, 2))
-    st.divider()
-    st.subheader("Jauge de clôture cognitive")
+with sr1:
+    st.markdown("### Cohérence discursive")
+    # jauge ici
 
-    st.caption(
-        "Cette jauge mesure le degré de verrouillage cognitif du texte. "
-        "Plus elle monte, plus la certitude domine le savoir et l’intégration."
-    )
+with sr2:
+    st.markdown("### Cohérence trompeuse")
+    # jauge ici
 
-    closure_gauge = min(closure / 1.5, 1.0)
+st.divider()
 
-    closure_label, closure_color, closure_text = interpret_closure_gauge(closure)
 
-    render_custom_gauge(closure_gauge, closure_color)
+# =============================
+# 🧭 4. ORIENTATION IDÉOLOGIQUE
+# =============================
+st.subheader("🧭 Orientation idéologique")
+st.caption("Détection des structures narratives orientées ou propagandistes.")
+
+oi1, oi2, oi3 = st.columns(3)
+
+with oi1:
+    st.markdown("### Jauge propagandiste")
+    # jauge ici
+
+with oi2:
+    st.markdown("### Narration propagandiste")
+    # jauge ici
+
+with oi3:
+    st.markdown("### Polarisation / Ennemi abstrait")
+    # jauge ici
+
+st.divider()
+
+
+# =============================
+# ⚖️ 5. ANALYSE LOGIQUE
+# =============================
+st.subheader("⚖️ Analyse logique")
+st.caption("Identification des erreurs de raisonnement et des structures logiques.")
+
+al1, al2, al3 = st.columns(3)
+
+with al1:
+    st.markdown("### Confusion logique")
+    # jauge ici
+
+with al2:
+    st.markdown("### Fausse causalité")
+    # jauge ici
+
+with al3:
+    st.markdown("### Faux dilemme")
+    # jauge ici
+
+al4, al5, al6 = st.columns(3)
+
+with al4:
+    st.markdown("### Pétition de principe")
+    # jauge ici
+
+with al5:
+    st.markdown("### Cherry picking")
+    # jauge ici
+
+with al6:
+    st.markdown("### Sophismes détectés")
+    # jauge ici
+
+st.markdown("### Syllogismes / Enthymèmes")
+# bloc logique ici
+
+st.divider()
+
+
+# =============================
+# 🧪 6. BIAIS DE FORMULATION
+# =============================
+st.subheader("🧪 Biais de formulation")
+st.caption("Biais liés au langage, à la présentation et à l’apparence de crédibilité.")
+
+bf1, bf2, bf3 = st.columns(3)
+
+with bf1:
+    st.markdown("### Autorité vague")
+    # jauge ici
+
+with bf2:
+    st.markdown("### Qualification normative")
+    # jauge ici
+
+with bf3:
+    st.markdown("### Scientificité rhétorique")
+    # jauge ici
+
+bf4, bf5 = st.columns(2)
+
+with bf4:
+    st.markdown("### Glissement sémantique")
+    # jauge ici
+
+with bf5:
+    st.markdown("### Faux consensus")
+    # jauge ici
+
+st.divider()
+
+
+# =============================
+# 📊 7. SYNTHÈSE FINALE
+# =============================
+st.subheader("📊 Synthèse finale")
+st.caption("Vision globale du discours après analyse des différentes dimensions.")
+
+st.markdown("### Verdict global")
+# verdict ici
+
+st.markdown("### Crédibilité finale")
+# jauge ici
+
+st.markdown("### Régime cognitif dominant")
+# affichage ici
+
+
+st.divider()
+
+
+st.subheader("Cohérence trompeuse")
+st.caption(
+    "Cette jauge mesure si le texte paraît cohérent tout en restant fragile, orienté ou insuffisamment vérifiable."
+)
+
+value = result.get("deceptive_coherence", 0)
+label = result.get("deceptive_coherence_label", "—")
+
+if value < 0.25:
+    color = "#ca8a04"
+elif value < 0.50:
+    color = "#ca8a04"
+elif value < 0.75:
+    color = "#f97316"
+else:
+    color = "#dc2626"
+
+render_custom_gauge(value, color)
+
+st.markdown(
+    f"<b style='color:{color}'>{label}</b> — {round(value * 100, 1)}%",
+    unsafe_allow_html=True
+)
+
+st.caption("Cohérence apparente ⟵⟶ Cohérence trompeuse")
+
+st.divider()
+st.subheader("Jauge propagandiste")
+st.caption(
+    "Cette jauge combine la tension cognitive, la pression rhétorique, "
+    "les motifs idéologiques détectés et le degré de fermeture cognitive. "
+    "Elle aide à estimer si le texte relève d’un simple discours orienté "
+    "ou d’une structure plus franchement propagandiste."
+)
+
+closure_for_discourse = (
+    (result["D"] * (1 + len(result["red_flags"]) / 5)) / (result["G"] + result["N"])
+    if (result["G"] + result["N"]) > 0 else 10
+)
+
+propaganda_value = compute_propaganda_gauge(
+    lie_gauge=gauge_value,
+    rhetorical_pressure=rp,
+    political_pattern_score=result["political_pattern_score"],
+    closure=closure_for_discourse
+)
+
+propaganda_label, propaganda_color, propaganda_text = interpret_propaganda_gauge(propaganda_value)
+
+render_custom_gauge(propaganda_value, propaganda_color)
+
+st.markdown(
+    f"<b style='color:{propaganda_color}'>{propaganda_label}</b> — {round(propaganda_value*100, 1)}%",
+    unsafe_allow_html=True
+)
+
+st.caption("Discours peu orienté ⟵⟶ Structure propagandiste")
+st.caption(propaganda_text)
+
+discursive_profile = interpret_discursive_profile(
+    lie_gauge=gauge_value,
+    rhetorical_pressure=rp,
+    propaganda_gauge=propaganda_value,
+    premise_score=result["premise_score"],
+    logic_confusion_score=result["logic_confusion_score"],
+    scientific_simulation_score=result["scientific_simulation_score"],
+    discursive_coherence_score=result["discursive_coherence_score"],
+)
+
+st.subheader("Profil discursif global")
+st.write(discursive_profile)
+
+st.divider()
+st.subheader("Cartographie discursive complémentaire")
+
+st.caption(
+    "Cette cartographie regroupe les principaux mécanismes discursifs détectables "
+    "dans un texte : jugements de valeur, prémisses implicites, structures propagandistes, "
+    "confusions logiques, simulations scientifiques, biais narratifs et mécanismes de "
+    "fermeture cognitive.\n\n"
+    "Elle est complétée par une analyse logique des raisonnements "
+    "(syllogismes, enthymèmes et sophismes) ainsi que par des indicateurs "
+    "stratégiques permettant d’identifier certaines formes de manipulation argumentative."
+)
+
+row1_col1, row1_col2, row1_col3 = st.columns(3)
+row2_col1, row2_col2, row2_col3 = st.columns(3)
+row3_col1, row3_col2, row3_col3 = st.columns(3)
+row4_col1, row4_col2, row4_col3 = st.columns(3)
+row5_col1, row5_col2, row5_col3 = st.columns(3)
+row6_col1, row6_col2, row6_col3 = st.columns(3)
+row7_col1, row7_col2, row7_col3 = st.columns(3)
+row8_col1, row8_col2, row8_col3 = st.columns(3)
+row9_col1, row9_col2, row9_col3 = st.columns(3)
+row10_col1, row10_col2, row10_col3 = st.columns(3)
+row11_col1, row11_col2, row11_col3 = st.columns(3)
+row12_col1, row12_col2, row12_col3 = st.columns(3)
+row13_col1, row13_col2, row13_col3 = st.columns(3)
+row14_col1, row14_col2, row14_col3 = st.columns(3)
+row15_col1, row15_col2 = st.columns(2)
+    
+    
+# -----------------------------
+# 1) Qualifications normatives
+# -----------------------------
+with row1_col1:
+    st.markdown("### Qualification normative")
+    st.caption("Jugements de valeur présentés comme des faits.")
+
+    normative_value = result["normative_score"]
+
+    if normative_value < 0.20:
+        normative_label, normative_color = "Faible", "#ca8a04"
+    elif normative_value < 0.40:
+        normative_label, normative_color = "Modérée", "#f97316"
+    elif normative_value < 0.70:
+        normative_label, normative_color = "Élevée", "#ea580c"
+    else:
+        normative_label, normative_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(normative_value, normative_color)
 
     st.markdown(
-        f"<b style='color:{closure_color}'>{closure_label}</b> — {round(closure,2)}",
+        f"<b style='color:{normative_color}'>{normative_label}</b> — {round(normative_value * 100, 1)}%",
         unsafe_allow_html=True
     )
+    st.caption(result["normative_interpretation"])
 
-    st.caption("Ouverture cognitive ⟵⟶ Clôture cognitive")
+    with st.expander("Voir les marqueurs", expanded=False):
+        normative_terms = result.get("normative_terms", [])
+        judgment_markers = result.get("normative_judgment_markers", [])
 
-    st.caption(closure_text)
-    st.markdown(f"**{T['interpretation']} :** {cog.interpret()}")
+        if not normative_terms and not judgment_markers:
+            st.info("Aucun marqueur saillant détecté.")
+        else:
+            if normative_terms:
+                st.markdown("**Termes normatifs**")
+                for term in normative_terms:
+                    st.error(term)
+            if judgment_markers:
+                st.markdown("**Marqueurs de jugement**")
+                for term in judgment_markers:
+                    st.warning(term)
 
-    st.subheader(T["hard_fact_checking_by_claim"])
-    claims_df = pd.DataFrame(
-        [
-            {
-                T["claim"]: c.text,
-                "Type": ", ".join(c.claim_types),
-                "Forme": c.aristotelian_type if c.aristotelian_type else "-",
-                "Sujet": c.subject_term if c.subject_term else "-",
-                "Prédicat": c.predicate_term if c.predicate_term else "-",
-                T["status"]: c.status,
-                f"{T['verifiability']} /20": c.verifiability,
-                f"{T['risk']} /20": c.risk,
-                "Ajustement": c.short_adjustment,
-                "Note épistémique": c.epistemic_note,
-                T["number"]: T["yes"] if c.has_number else T["no"],
-                T["date"]: T["yes"] if c.has_date else T["no"],
-                T["named_entity"]: T["yes"] if c.has_named_entity else T["no"],
-                T["attributed_source"]: T["yes"] if c.has_source_cue else T["no"],
-            }
-            for c in result["claims"]
-        ]
+# -----------------------------
+# 2) Prémisses idéologiques implicites
+# -----------------------------
+with row1_col2:
+    st.markdown("### Prémisses implicites")
+    st.caption("Idées présentées comme évidentes sans démonstration.")
+
+    premise_value = result["premise_score"]
+
+    if premise_value < 0.20:
+        premise_label, premise_color = "Faible", "#ca8a04"
+    elif premise_value < 0.40:
+        premise_label, premise_color = "Modérée", "#f97316"
+    elif premise_value < 0.70:
+        premise_label, premise_color = "Élevée", "#ea580c"
+    else:
+        premise_label, premise_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(premise_value, premise_color)
+
+    st.markdown(
+        f"<b style='color:{premise_color}'>{premise_label}</b> — {round(premise_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["premise_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        premise_markers = result.get("premise_markers", [])
+
+        if not premise_markers:
+            st.info("Aucune prémisse implicite saillante détectée.")
+        else:
+            for marker in premise_markers:
+                st.warning(marker)
+
+# -----------------------------
+# 3) Propagande narrative
+# -----------------------------
+with row1_col3:
+    st.markdown("### Narration propagandiste")
+    st.caption("Urgence, ennemi abstrait, certitude et charge émotionnelle.")
+
+    propaganda_value = result["propaganda_score"]
+
+    if propaganda_value < 0.20:
+        propaganda_label, propaganda_color = "Faible", "#ca8a04"
+    elif propaganda_value < 0.40:
+        propaganda_label, propaganda_color = "Modérée", "#f97316"
+    elif propaganda_value < 0.70:
+        propaganda_label, propaganda_color = "Élevée", "#ea580c"
+    else:
+        propaganda_label, propaganda_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(propaganda_value, propaganda_color)
+
+    st.markdown(
+        f"<b style='color:{propaganda_color}'>{propaganda_label}</b> — {round(propaganda_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["propaganda_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        enemy_terms = result.get("propaganda_enemy_terms", [])
+        urgency_terms = result.get("propaganda_urgency_terms", [])
+        certainty_terms = result.get("propaganda_certainty_terms", [])
+        emotional_terms = result.get("propaganda_emotional_terms", [])
+
+        if not any([enemy_terms, urgency_terms, certainty_terms, emotional_terms]):
+            st.info("Aucun marqueur narratif saillant détecté.")
+        else:
+            if enemy_terms:
+                st.markdown("**Ennemi / bloc adverse**")
+                for term in enemy_terms:
+                    st.error(term)
+
+            if urgency_terms:
+                st.markdown("**Urgence / menace**")
+                for term in urgency_terms:
+                    st.warning(term)
+
+            if certainty_terms:
+                st.markdown("**Certitude absolue**")
+                for term in certainty_terms:
+                    st.warning(term)
+
+            if emotional_terms:
+                st.markdown("**Charge émotionnelle**")
+                for term in emotional_terms:
+                    st.error(term)
+
+# -----------------------------
+# 4) Cohérence discursive
+# -----------------------------
+with row2_col1:
+    st.markdown("### Cohérence discursive")
+    st.caption("Solidité interne du texte, indépendamment de sa vérifiabilité.")
+
+    coherence_value = result["discursive_coherence_score"] / 20
+
+    if coherence_value < 0.20:
+        coherence_label, coherence_color = "Faible", "#dc2626"
+    elif coherence_value < 0.40:
+        coherence_label, coherence_color = "Limitée", "#f97316"
+    elif coherence_value < 0.65:
+        coherence_label, coherence_color = "Correcte", "#ca8a04"
+    elif coherence_value < 0.85:
+        coherence_label, coherence_color = "Solide", "#84cc16"
+    else:
+        coherence_label, coherence_color = "Très forte", "#16a34a"
+
+    render_custom_gauge(coherence_value, coherence_color)
+
+    st.markdown(
+        f"<b style='color:{coherence_color}'>{coherence_label}</b> — {result['discursive_coherence_score']}/20",
+        unsafe_allow_html=True
+    )
+    st.caption(result["discursive_coherence_label"])
+
+    with st.expander("Voir le détail", expanded=False):
+        d = result["discursive_coherence_details"]
+        st.write(f"**Logique discursive** : {d['logic_score']}/5")
+        st.write(f"**Stabilité thématique** : {d['stability_score']}/4")
+        st.write(f"**Longueur utile** : {d['length_score']}/5")
+        st.write(f"**Cohérence entre paragraphes** : {d['paragraph_score']}/4")
+        st.write(f"**Pénalité de contradiction** : -{d['contradiction_penalty']}")
+        st.write(f"**Pénalité de rupture thématique** : -{d['topic_shift_penalty']}")
+        if d["top_keywords"]:
+            st.write("**Mots-clés dominants**")
+            for word, count in d["top_keywords"]:
+                st.write(f"- {word} ({count})")
+
+# -----------------------------
+# 5) Confusion logique
+# -----------------------------
+with row2_col2:
+    st.markdown("### Confusion logique")
+    st.caption("Causalité abusive, extrapolation, prédiction absolue.")
+
+    logic_value = result["logic_confusion_score"]
+
+    if logic_value < 0.20:
+        logic_label, logic_color = "Faible", "#ca8a04"
+    elif logic_value < 0.40:
+        logic_label, logic_color = "Modérée", "#f97316"
+    elif logic_value < 0.70:
+        logic_label, logic_color = "Élevée", "#ea580c"
+    else:
+        logic_label, logic_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(logic_value, logic_color)
+
+    st.markdown(
+        f"<b style='color:{logic_color}'>{logic_label}</b> — {round(logic_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["logic_confusion_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("logic_confusion_markers", [])
+        if not markers:
+            st.info("Aucune confusion logique saillante détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 6) Scientificité rhétorique
+# -----------------------------
+with row2_col3:
+    st.markdown("### Scientificité rhétorique")
+    st.caption("Simulation d’objectivité scientifique sans base identifiable.")
+
+    sim_value = result["scientific_simulation_score"]
+
+    if sim_value < 0.20:
+        sim_label, sim_color = "Faible", "#ca8a04"
+    elif sim_value < 0.40:
+        sim_label, sim_color = "Modérée", "#f97316"
+    elif sim_value < 0.70:
+        sim_label, sim_color = "Élevée", "#ea580c"
+    else:
+        sim_label, sim_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(sim_value, sim_color)
+
+    st.markdown(
+        f"<b style='color:{sim_color}'>{sim_label}</b> — {round(sim_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["scientific_simulation_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("scientific_simulation_markers", [])
+        if not markers:
+            st.info("Aucun marqueur de scientificité rhétorique détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 7) Fausse causalité
+# -----------------------------
+with row3_col1:
+    st.markdown("### Fausse causalité")
+    st.caption("Liens causaux affirmés plus vite qu'ils ne sont démontrés.")
+
+    causal_value = result["causal_overreach_score"]
+
+    if causal_value < 0.20:
+        causal_label, causal_color = "Faible", "#ca8a04"
+    elif causal_value < 0.40:
+        causal_label, causal_color = "Modérée", "#f97316"
+    elif causal_value < 0.70:
+        causal_label, causal_color = "Élevée", "#ea580c"
+    else:
+        causal_label, causal_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(causal_value, causal_color)
+
+    st.markdown(
+        f"<b style='color:{causal_color}'>{causal_label}</b> — {round(causal_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["causal_overreach_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("causal_overreach_markers", [])
+        if not markers:
+            st.info("Aucun marqueur de causalité abusive détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 8) Autorité vague
+# -----------------------------
+with row3_col2:
+    st.markdown("### Autorité vague")
+    st.caption("Appels à des experts, études ou spécialistes sans source précise.")
+
+    vague_auth_value = result["vague_authority_score"]
+
+    if vague_auth_value < 0.20:
+        vague_auth_label, vague_auth_color = "Faible", "#ca8a04"
+    elif vague_auth_value < 0.40:
+        vague_auth_label, vague_auth_color = "Modérée", "#f97316"
+    elif vague_auth_value < 0.70:
+        vague_auth_label, vague_auth_color = "Élevée", "#ea580c"
+    else:
+        vague_auth_label, vague_auth_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(vague_auth_value, vague_auth_color)
+
+    st.markdown(
+        f"<b style='color:{vague_auth_color}'>{vague_auth_label}</b> — {round(vague_auth_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["vague_authority_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("vague_authority_markers", [])
+        if not markers:
+            st.info("Aucun marqueur d'autorité vague détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 10) Généralisation abusive
+# -----------------------------
+with row4_col1:
+    st.markdown("### Généralisation abusive")
+    st.caption("Simplification du réel par catégories globales.")
+
+    generalization_value = result["generalization_score"]
+
+    if generalization_value < 0.20:
+        generalization_label, generalization_color = "Faible", "#ca8a04"
+    elif generalization_value < 0.40:
+        generalization_label, generalization_color = "Modérée", "#f97316"
+    elif generalization_value < 0.70:
+        generalization_label, generalization_color = "Élevée", "#ea580c"
+    else:
+        generalization_label, generalization_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(generalization_value, generalization_color)
+
+    st.markdown(
+        f"<b style='color:{generalization_color}'>{generalization_label}</b> — {round(generalization_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["generalization_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("generalization_markers", [])
+        if not markers:
+            st.info("Aucune généralisation abusive notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 11) Ennemi abstrait
+# -----------------------------
+with row4_col2:
+    st.markdown("### Ennemi abstrait")
+    st.caption("Construction d’un adversaire flou ou globalisant.")
+
+    abstract_enemy_value = result["abstract_enemy_score"]
+
+    if abstract_enemy_value < 0.20:
+        abstract_enemy_label, abstract_enemy_color = "Faible", "#ca8a04"
+    elif abstract_enemy_value < 0.40:
+        abstract_enemy_label, abstract_enemy_color = "Modérée", "#f97316"
+    elif abstract_enemy_value < 0.70:
+        abstract_enemy_label, abstract_enemy_color = "Élevée", "#ea580c"
+    else:
+        abstract_enemy_label, abstract_enemy_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(abstract_enemy_value, abstract_enemy_color)
+
+    st.markdown(
+        f"<b style='color:{abstract_enemy_color}'>{abstract_enemy_label}</b> — {round(abstract_enemy_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["abstract_enemy_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("abstract_enemy_markers", [])
+        if not markers:
+            st.info("Aucun ennemi abstrait notable détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 12) Certitude absolue
+# -----------------------------
+with row4_col3:
+    st.markdown("### Certitude absolue")
+    st.caption("Rigidité rhétorique et fermeture interprétative.")
+
+    certainty_value = result["certainty_score"]
+
+    if certainty_value < 0.20:
+        certainty_label, certainty_color = "Faible", "#ca8a04"
+    elif certainty_value < 0.40:
+        certainty_label, certainty_color = "Modérée", "#f97316"
+    elif certainty_value < 0.70:
+        certainty_label, certainty_color = "Élevée", "#ea580c"
+    else:
+        certainty_label, certainty_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(certainty_value, certainty_color)
+
+    st.markdown(
+        f"<b style='color:{certainty_color}'>{certainty_label}</b> — {round(certainty_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["certainty_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("certainty_markers", [])
+        if not markers:
+            st.info("Aucun marqueur fort de certitude absolue détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 13) Faux consensus
+# -----------------------------
+with row5_col1:
+    st.markdown("### Faux consensus")
+    st.caption("Simulation d’un accord collectif présenté comme évident.")
+
+    false_consensus_value = result["false_consensus_score"]
+
+    if false_consensus_value < 0.15:
+        false_consensus_label, false_consensus_color = "Faible", "#ca8a04"
+    elif false_consensus_value < 0.35:
+        false_consensus_label, false_consensus_color = "Modérée", "#f97316"
+    elif false_consensus_value < 0.60:
+        false_consensus_label, false_consensus_color = "Élevée", "#ea580c"
+    else:
+        false_consensus_label, false_consensus_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(false_consensus_value, false_consensus_color)
+
+    st.markdown(
+        f"<b style='color:{false_consensus_color}'>{false_consensus_label}</b> — {round(false_consensus_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["false_consensus_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("false_consensus_markers", [])
+        if not markers:
+            st.info("Aucun faux consensus notable détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+
+# -----------------------------
+# 14) Opposition binaire
+# -----------------------------
+with row5_col2:
+    st.markdown("### Opposition binaire")
+    st.caption("Découpage du discours en camps antagonistes.")
+
+    binary_value = result["binary_opposition_score"]
+
+    if binary_value < 0.15:
+        binary_label, binary_color = "Faible", "#ca8a04"
+    elif binary_value < 0.35:
+        binary_label, binary_color = "Modérée", "#f97316"
+    elif binary_value < 0.60:
+        binary_label, binary_color = "Élevée", "#ea580c"
+    else:
+        binary_label, binary_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(binary_value, binary_color)
+
+    st.markdown(
+        f"<b style='color:{binary_color}'>{binary_label}</b> — {round(binary_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["binary_opposition_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("binary_opposition_markers", [])
+        if not markers:
+            st.info("Aucune opposition binaire notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+
+# -----------------------------
+# 15) Amplification de menace
+# -----------------------------
+with row5_col3:
+    st.markdown("### Amplification de menace")
+    st.caption("Exagération dramatique du danger ou de la gravité.")
+
+    threat_value = result["threat_amplification_score"]
+
+    if threat_value < 0.15:
+        threat_label, threat_color = "Faible", "#ca8a04"
+    elif threat_value < 0.35:
+        threat_label, threat_color = "Modérée", "#f97316"
+    elif threat_value < 0.60:
+        threat_label, threat_color = "Élevée", "#ea580c"
+    else:
+        threat_label, threat_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(threat_value, threat_color)
+
+    st.markdown(
+        f"<b style='color:{threat_color}'>{threat_label}</b> — {round(threat_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["threat_amplification_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("threat_amplification_markers", [])
+        if not markers:
+            st.info("Aucune amplification de menace notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 19) Fausse analogie
+# -----------------------------
+with row7_col1:
+    st.markdown("### Fausse analogie")
+    st.caption("Comparaisons trompeuses qui court-circuitent l’analyse.")
+
+    value = result["false_analogy_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
+    st.caption(result["false_analogy_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("false_analogy_markers", [])
+        if not markers:
+            st.info("Aucune fausse analogie notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 20) Surinterprétation factuelle
+# -----------------------------
+with row7_col2:
+    st.markdown("### Surinterprétation factuelle")
+    st.caption("Conclusions excessives tirées à partir d’indices partiels.")
+
+    value = result["factual_overinterpretation_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
+    st.caption(result["factual_overinterpretation_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("factual_overinterpretation_markers", [])
+        if not markers:
+            st.info("Aucune surinterprétation factuelle notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 21) Dissonance interne
+# -----------------------------
+with row7_col3:
+    st.markdown("### Dissonance interne")
+    st.caption("Contradictions ou incompatibilités au sein du même discours.")
+
+    value = result["internal_dissonance_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
+    st.caption(result["internal_dissonance_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("internal_dissonance_markers", [])
+        if not markers:
+            st.info("Aucune dissonance interne notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 22) Saturation normative
+# -----------------------------
+with row8_col1:
+    st.markdown("### Saturation normative")
+    st.caption("Accumulation de jugements moraux à la place de l’analyse.")
+
+    value = result["normative_saturation_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
+    st.caption(result["normative_saturation_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("normative_saturation_markers", [])
+        if not markers:
+            st.info("Aucune saturation normative notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 23) Rigidité doxique
+# -----------------------------
+with row8_col2:
+    st.markdown("### Rigidité doxique")
+    st.caption("Degré de fermeture du texte par excès de certitude partagée.")
+
+    value = result["doxic_rigidity_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
+    st.caption(result["doxic_rigidity_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("doxic_rigidity_markers", [])
+        if not markers:
+            st.info("Aucune rigidité doxique notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 24) Surdétermination narrative
+# -----------------------------
+with row8_col3:
+    st.markdown("### Surdétermination narrative")
+    st.caption("Réduction du réel à un récit unique supposé tout expliquer.")
+
+    value = result["narrative_overdetermination_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
+    st.caption(result["narrative_overdetermination_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("narrative_overdetermination_markers", [])
+        if not markers:
+            st.info("Aucune surdétermination narrative notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 16) Glissement sémantique
+# -----------------------------
+with row6_col1:
+    st.markdown("### Glissement sémantique")
+    st.caption("Recadrage lexical stratégique du réel par des termes orientés.")
+
+    semantic_value = result["semantic_shift_score"]
+
+    if semantic_value < 0.20:
+        semantic_label, semantic_color = "Faible", "#ca8a04"
+    elif semantic_value < 0.40:
+        semantic_label, semantic_color = "Modérée", "#f97316"
+    elif semantic_value < 0.70:
+        semantic_label, semantic_color = "Élevée", "#ea580c"
+    else:
+        semantic_label, semantic_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(semantic_value, semantic_color)
+
+    st.markdown(
+        f"<b style='color:{semantic_color}'>{semantic_label}</b> — {round(semantic_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["semantic_shift_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("semantic_shift_markers", [])
+        if not markers:
+            st.info("Aucun glissement sémantique notable détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 17) Prémisses idéologiques implicites
+# -----------------------------
+with row6_col2:
+    st.markdown("### Prémisses idéologiques")
+    st.caption("Présupposés idéologiques présentés comme allant de soi.")
+
+    ideological_value = result["ideological_premise_score"]
+
+    if ideological_value < 0.20:
+        ideological_label, ideological_color = "Faible", "#ca8a04"
+    elif ideological_value < 0.40:
+        ideological_label, ideological_color = "Modérée", "#f97316"
+    elif ideological_value < 0.70:
+        ideological_label, ideological_color = "Élevée", "#ea580c"
+    else:
+        ideological_label, ideological_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(ideological_value, ideological_color)
+
+    st.markdown(
+        f"<b style='color:{ideological_color}'>{ideological_label}</b> — {round(ideological_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["ideological_premise_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("ideological_premise_markers", [])
+        if not markers:
+            st.info("Aucune prémisse idéologique saillante détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 18) Clôture cognitive
+# -----------------------------
+with row6_col3:
+    st.markdown("### Clôture cognitive")
+    st.caption("Degré de verrouillage du discours par excès de certitude.")
+
+    closure_local = (
+        (result["D"] * (1 + len(result["red_flags"]) / 5)) / (result["G"] + result["N"])
+        if (result["G"] + result["N"]) > 0 else 10
     )
 
-    if not claims_df.empty:
-        st.dataframe(claims_df, use_container_width=True, hide_index=True)
+    closure_value = min(closure_local / 1.5, 1.0)
+
+    if closure_local < 0.40:
+        closure_label, closure_color = "Ouverte", "#16a34a"
+    elif closure_local < 0.75:
+        closure_label, closure_color = "Modérée", "#ca8a04"
+    elif closure_local < 1.10:
+        closure_label, closure_color = "Élevée", "#f97316"
     else:
-        st.info(T["paste_longer_text"])
+        closure_label, closure_color = "Critique", "#dc2626"
 
-    st.divider()
-    st.subheader("Analyse syllogistique")
+    render_custom_gauge(closure_value, closure_color)
 
-    if result.get("syllogisms"):
-        for i, s in enumerate(result["syllogisms"], start=1):
-            with st.expander(f"Syllogisme potentiel {i}", expanded=False):
-                st.write(f"**Forme** : {s['form']}")
-                st.write(f"**Terme moyen** : {s['middle_term'] if s['middle_term'] else '-'}")
-                st.write(f"**Figure** : {s['figure'] if s['figure'] else '-'}")
-                st.write(f"**Statut** : {s['status']}")
+    st.markdown(
+        f"<b style='color:{closure_color}'>{closure_label}</b> — {round(closure_local, 2)}",
+        unsafe_allow_html=True
+    )
+    st.caption("Plus la certitude domine G + N, plus le texte se ferme.")
 
-                st.write("**Prémisse 1**")
-                st.write(s["premise_1"])
-                if "p1_terms" in s:
-                    st.caption(f"Sujet : {s['p1_terms']['subject']} | Prédicat : {s['p1_terms']['predicate']}")
+# =============================
+# Jauges structurelles avancées
+# =============================
 
-                st.write("**Prémisse 2**")
-                st.write(s["premise_2"])
-                if "p2_terms" in s:
-                    st.caption(f"Sujet : {s['p2_terms']['subject']} | Prédicat : {s['p2_terms']['predicate']}")
+result = st.session_state.get("last_result")
+article_for_analysis = st.session_state.get("last_article", "")
 
-                st.write("**Conclusion**")
-                st.write(s["conclusion"])
-                if "c_terms" in s:
-                    st.caption(f"Sujet : {s['c_terms']['subject']} | Prédicat : {s['c_terms']['predicate']}")
+if not result:
+    st.info(T["paste_text_or_load_url"])
+    st.stop()
+
+st.subheader("Jauges structurelles avancées")
+
+gauges = [
+    (
+        "Saut logique",
+        result.get("logical_jump_score", 0),
+        result.get("logical_jump_label", "Non calculée"),
+        result.get("logical_jump_interpretation", "")
+    ),
+    (
+        "Densité argumentative",
+        result.get("argument_density_score", 0),
+        result.get("argument_density_label", "Non calculée"),
+        result.get("argument_density_interpretation", "")
+    ),
+    (
+        "Certitude forte composée",
+        result.get("strong_certainty_score", 0),
+        result.get("strong_certainty_label", "Non calculée"),
+        result.get("strong_certainty_interpretation", "")
+    ),
+]
+
+for title, score, label, interpretation in gauges:
+
+    if title == "Densité argumentative":
+        title_html = interpret_generic_quality_gauge(title, score)
+    elif title in ["Cohérence trompeuse", "Jauge propagandiste"]:
+        title_html = interpret_warning_risk_gauge(title, score)
     else:
-        st.info("Aucun syllogisme détecté.")
+        title_html = interpret_generic_risk_gauge(title, score)
+    
+    # ✅ Plancher visuel : jamais moins de 10%
+    
+    st.markdown(title_html, unsafe_allow_html=True)
+    st.progress(score)
+    st.caption(f"{label} — {round(score * 100, 1)}%")
+    
+    if interpretation:
+        st.write(interpretation)
 
-    st.divider()
-    st.subheader("Enthymèmes détectés")
+# -----------------------------
+# 25) Syllogismes détectés
+# -----------------------------
+with row9_col1:
+    st.markdown("### Syllogismes détectés")
+    st.caption("Structures logiques explicites repérées dans le texte.")
 
-    if result.get("enthymemes"):
-        for i, e in enumerate(result["enthymemes"], start=1):
-            with st.expander(f"Enthymème potentiel {i}", expanded=False):
-                st.write(f"**Forme** : {e['form']}")
-                st.write(f"**Sujet** : {e['subject']}")
-                st.write(f"**Prédicat** : {e['predicate']}")
-                st.write(f"**Statut** : {e['status']}")
+    value = min(result["syllogism_signal"] / 2, 1.0)
 
-                st.write("**Conclusion**")
-                st.write(e["conclusion"])
-
-                if e["context"]:
-                    st.write("**Contexte précédent**")
-                    for line in e["context"]:
-                        st.write(f"- {line}")
+    if result["syllogism_signal"] == 0:
+        label, color = "Aucun signal", "#16a34a"
+    elif result["syllogism_signal"] == 1:
+        label, color = "Signal faible", "#ca8a04"
+    elif result["syllogism_signal"] <= 3:
+        label, color = "Signal modéré", "#f97316"
     else:
-        st.info("Aucun enthymème détecté.")
+        label, color = "Signal fort", "#dc2626"
 
-    st.divider()
-    st.subheader("Sophismes syllogistiques")
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{result['syllogism_label']}</b> — {result['syllogism_signal']} repéré(s)",
+        unsafe_allow_html=True
+    )
+    st.caption("Détection de prémisses et conclusion enchaînées.")
 
-    if result.get("fallacies"):
-        for i, f in enumerate(result["fallacies"], start=1):
-            with st.expander(f"Sophisme détecté {i}", expanded=False):
-                st.write(f"**Type** : {f['type']}")
-                st.write(f"**Description** : {f['description']}")
+# -----------------------------
+# 26) Enthymèmes détectés
+# -----------------------------
+with row9_col2:
+    st.markdown("### Enthymèmes détectés")
+    st.caption("Raisonnements incomplets ou implicites repérés dans le texte.")
 
-                s = f["syllogism"]
+    value = min(result["enthymeme_signal"] / 4, 1.0)
 
-                st.write("**Prémisse 1**")
-                st.write(s["premise_1"])
-
-                st.write("**Prémisse 2**")
-                st.write(s["premise_2"])
-
-                st.write("**Conclusion**")
-                st.write(s["conclusion"])
+    if result["enthymeme_signal"] == 0:
+        label, color = "Aucun signal", "#16a34a"
+    elif result["enthymeme_signal"] == 1:
+        label, color = "Signal faible", "#ca8a04"
+    elif result["enthymeme_signal"] <= 3:
+        label, color = "Signal modéré", "#f97316"
     else:
-        st.info("Aucun sophisme syllogistique détecté.")
+        label, color = "Signal fort", "#dc2626"
 
-    st.divider()
-    st.subheader(T["ai_module"])
-    st.caption(T["ai_module_caption"])
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{result['enthymeme_label']}</b> — {result['enthymeme_signal']} repéré(s)",
+        unsafe_allow_html=True
+    )
+    st.caption("Conclusion présente, prémisse partiellement implicite.")
 
-    if client is None:
-        st.warning(T["ai_unavailable"])
+# -----------------------------
+# 27) Sophismes syllogistiques
+# -----------------------------
+with row9_col3:
+    st.markdown("### Sophismes syllogistiques")
+    st.caption("Failles formelles ou conclusions invalides dans les raisonnements.")
+
+    value = min(result["fallacy_signal"] / 2, 1.0)
+
+    if result["fallacy_signal"] == 0:
+        label, color = "Aucun signal", "#ca8a04"
+    elif result["fallacy_signal"] == 1:
+        label, color = "Signal faible", "#f97316"
+    elif result["fallacy_signal"] <= 3:
+        label, color = "Signal modéré", "#ea580c"
     else:
-        if st.button(T["generate_ai_analysis"], key="generate_ai_analysis"):
-            with st.spinner("Analyse IA en cours..."):
-                ai_summary = generate_ai_summary(article_for_analysis, result)
-            st.subheader(T["ai_analysis_result"])
-            st.markdown(ai_summary)
+        label, color = "Signal fort", "#dc2626"
 
-    if st.session_state.get("article_source") == "paste":
-        st.divider()
-        st.subheader(T["external_corroboration_module"])
-        st.caption(T["external_corroboration_caption"])
-        with st.spinner(T["corroboration_in_progress"]):
-            corroboration = corroborate_claims(article_for_analysis, max_claims=5, max_results_per_claim=3)
-        if corroboration:
-            for i, item in enumerate(corroboration, start=1):
-                title_preview = item["claim"][:140] + ("..." if len(item["claim"]) > 140 else "")
-                with st.expander(f"{T['claim']} {i} : {title_preview}", expanded=(i == 1)):
-                    st.markdown(f"**{T['corroboration_verdict']} :** {display_corroboration_verdict(item['verdict'])}")
-                    st.markdown(f"**{T['generated_query']} :** `{item['query']}`")
-                    if item["matches"]:
-                        for match in item["matches"]:
-                            st.markdown(f"**[{match['title']}]({match['url']})**")
-                            st.markdown(
-                                f"- **{T['match_score']}** : {match['match_score']['score']}\n"
-                                f"- **{T['contradiction_signal']}** : {T['detected'] if match['match_score']['contradiction_signal'] else T['not_detected']}"
-                            )
-                            if match["snippet"]:
-                                st.caption(match["snippet"])
-                    else:
-                        st.warning(T["no_strong_sources_found"])
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{result['fallacy_label']}</b> — {result['fallacy_signal']} repéré(s)",
+        unsafe_allow_html=True
+    )
+    st.caption("Terme moyen absent, forme invalide ou conclusion trop forte.")
+
+    
+with row10_col1:
+    st.markdown("### Pétition de principe")
+    st.caption("Conclusion répétée comme si elle constituait une preuve.")
+
+    value = result["petition_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["petition_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("petition_markers", [])
+        if not markers:
+            st.info("Aucune pétition de principe notable détectée.")
         else:
-            st.info(T["no_corroboration_found"])
+            for marker in markers:
+                st.warning(marker)
+
+with row10_col2:
+    st.markdown("### Fausse causalité (simple)")
+    st.caption("Lien causal affirmé sans démonstration suffisante.")
+
+    value = result["false_causality_basic_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["false_causality_basic_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("false_causality_basic_markers", [])
+        if not markers:
+            st.info("Aucune fausse causalité simple notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row10_col3:
+    st.markdown("### Généralisation abusive")
+    st.caption("Passage abusif de cas particuliers à une règle générale.")
+
+    value = result["hasty_generalization_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["hasty_generalization_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("hasty_generalization_markers", [])
+        if not markers:
+            st.info("Aucune généralisation abusive notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row11_col1:
+    st.markdown("### Autorité vague (simple)")
+    st.caption("Autorité invoquée sans source clairement traçable.")
+
+    value = result["vague_authority_basic_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["vague_authority_basic_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("vague_authority_basic_markers", [])
+        if not markers:
+            st.info("Aucune autorité vague simple notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row11_col2:
+    st.markdown("### Faux dilemme")
+    st.caption("Réduction artificielle du réel à deux options.")
+
+    value = result["false_dilemma_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["false_dilemma_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("false_dilemma_markers", [])
+        if not markers:
+            st.info("Aucun faux dilemme notable détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row12_col1:
+    st.markdown("### Qualification normative")
+    st.caption("Usage de jugements de valeur comme substitut d’argument.")
+
+    value = result["normative_qualification_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["normative_qualification_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("normative_qualification_markers", [])
+        if not markers:
+            st.info("Aucune qualification normative notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row12_col2:
+    st.markdown("### Prémisse idéologique implicite")
+    st.caption("Présupposé idéologique utilisé comme point de départ du raisonnement.")
+
+    value = result["ideological_premise_sophism_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["ideological_premise_sophism_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("ideological_premise_sophism_markers", [])
+        if not markers:
+            st.info("Aucune prémisse idéologique implicite notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row12_col3:
+    st.markdown("### Faux consensus renforcé")
+    st.caption("Simulation d’un accord collectif présenté comme preuve.")
+
+    value = result["false_consensus_strong_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["false_consensus_strong_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("false_consensus_strong_markers", [])
+        if not markers:
+            st.info("Aucun faux consensus renforcé notable détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row13_col1:
+    st.markdown("### Argument de nature")
+    st.caption("Le caractère naturel est utilisé comme argument de vérité ou de valeur.")
+
+    value = result["argument_from_nature_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["argument_from_nature_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("argument_from_nature_markers", [])
+        if not markers:
+            st.info("Aucun argument de nature notable détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row13_col2:
+    st.markdown("### Confusion descriptif / normatif")
+    st.caption("Glissement d’une description vers une injonction sans justification suffisante.")
+
+    value = result["descriptive_normative_confusion_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["descriptive_normative_confusion_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("descriptive_normative_confusion_markers", [])
+        if not markers:
+            st.info("Aucune confusion descriptif / normatif notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+with row13_col3:
+    st.markdown("### Cherry Picking")
+    st.caption("Sélection biaisée d’exemples, de cas ou de preuves allant dans un seul sens.")
+
+    value = result["cherry_picking_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["cherry_picking_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("cherry_picking_markers", [])
+        omissions = result.get("cherry_picking_omission_markers", [])
+
+        if not markers and not omissions:
+            st.info("Aucune sélection biaisée notable détectée.")
+        else:
+            if markers:
+                st.markdown("**Exemples isolés / preuves uniques**")
+                for marker in markers:
+                    st.warning(marker)
+
+            if omissions:
+                st.markdown("**Indices d’omission stratégique**")
+                for marker in omissions:
+                    st.error(marker)
+
+# -----------------------------
+# 39) Victimisation stratégique
+# -----------------------------
+with row14_col1:
+    st.markdown("### Victimisation stratégique")
+    st.caption("Mise en scène d’une persécution ou d’un empêchement de dire.")
+
+    value = result["victimization_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["victimization_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("victimization_markers", [])
+        if not markers:
+            st.info("Aucune victimisation stratégique notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 40) Polarisation morale
+# -----------------------------
+with row14_col2:
+    st.markdown("### Polarisation morale")
+    st.caption("Découpage moral du réel en camps du bien et du mal.")
+
+    value = result["moral_polarization_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["moral_polarization_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("moral_polarization_markers", [])
+        if not markers:
+            st.info("Aucune polarisation morale notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 41) Simplification stratégique
+# -----------------------------
+with row14_col3:
+    st.markdown("### Simplification stratégique")
+    st.caption("Réduction d’une réalité complexe à une cause unique ou simple.")
+
+    value = result["strategic_simplification_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["strategic_simplification_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("strategic_simplification_markers", [])
+        if not markers:
+            st.info("Aucune simplification stratégique notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 42) Frame shift
+# -----------------------------
+with row15_col1:
+    st.markdown("### Frame shift")
+    st.caption("Déplacement du cadre du débat pour orienter l’interprétation.")
+
+    value = result["frame_shift_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["frame_shift_interpretation"])
+
+    with st.expander("Voir les marqueurs", expanded=False):
+        markers = result.get("frame_shift_markers", [])
+        if not markers:
+            st.info("Aucun déplacement de cadre notable détecté.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+# -----------------------------
+# 43) Asymétrie argumentative
+# -----------------------------
+with row15_col2:
+    st.markdown("### Asymétrie argumentative")
+    st.caption("Le texte attaque davantage qu’il ne démontre.")
+
+    value = result["argument_asymmetry_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+    st.caption(result["argument_asymmetry_interpretation"])
+    st.caption(
+        f"Attaques : {result['argument_attack_count']} | Appuis logiques : {result['argument_support_count']}"
+    )
+
+with st.expander("Voir les manœuvres discursives détectées", expanded=False):
+    if result["political_pattern_score"] == 0:
+        st.info("Aucun marqueur rhétorique politique saillant détecté.")
+    else:
+        st.metric("Score global de manœuvres discursives", result["political_pattern_score"])
+
+        labels = {
+            "certitude": "Certitude performative",
+            "autorite": "Autorité vague institutionnelle",
+            "autorite_academique": "Autorité académique vague",
+            "dramatisation": "Dramatisation politique",
+            "generalisation": "Généralisation abusive",
+            "naturalisation": "Naturalisation idéologique",
+            "ennemi": "Ennemi abstrait",
+            "victimisation": "Victimisation discursive",
+            "moralisation": "Moralisation politique",
+            "moralisation_discours": "Moralisation du discours",
+            "urgence": "Urgence injonctive",
+            "promesse": "Promesse excessive",
+            "populisme": "Populisme anti-élite",
+            "progressisme_identitaire": "Progressisme identitaire",
+            "socialisme_communisme": "Cadre socialiste / communiste",
+            "delegitimation": "Délégitimation adverse",
+            "dilution": "Dilution de responsabilité",
+            "causalite": "Causalité implicite ou non démontrée",
+        }
+
+        for cat, count in result["political_results"].items():
+            if count > 0:
+                st.markdown(f"**{labels.get(cat, cat)}** : {count}")
+                st.caption(", ".join(result["matched_terms"][cat]))
+
+with st.expander(T["strengths_detected"], expanded=True):
+    if result["strengths"]:
+        for item in result["strengths"]:
+            st.success(item)
+    else:
+        st.info(T["few_strong_signals"])
+
+with st.expander(T["weaknesses_detected"], expanded=True):
+    if result["weaknesses"]:
+        for item in result["weaknesses"]:
+            st.error(item)
+    else:
+        st.success(T["no_major_weakness"])
+
+st.divider()
+st.subheader("Structure cognitive du texte analysé")
+st.info(T["llm_intro"])
+
+cog = Cognition(result["G"], result["N"], result["D"])
+overconfidence = result["D"] - (result["G"] + result["N"])
+calibration = result["D"] / (result["G"] + result["N"]) if (result["G"] + result["N"]) > 0 else 10
+revisability = (result["G"] + result["N"] + result["V"]) - result["D"]
+closure = (result["D"] * (1 + len(result["red_flags"]) / 5)) / (result["G"] + result["N"]) if (result["G"] + result["N"]) > 0 else 10
+
+c1, c2 = st.columns(2)
+c1.metric(T["overconfidence"], round(overconfidence, 2))
+c2.metric(T["calibration"], round(calibration, 2))
+c3, c4 = st.columns(2)
+c3.metric(T["revisability"], round(revisability, 2))
+c4.metric(T["cognitive_closure"], round(closure, 2))
+st.divider()
+st.subheader("Jauge de clôture cognitive")
+
+st.caption(
+    "Cette jauge mesure le degré de verrouillage cognitif du texte. "
+    "Plus elle monte, plus la certitude domine le savoir et l’intégration."
+)
+
+closure_gauge = min(closure / 1.5, 1.0)
+
+closure_label, closure_color, closure_text = interpret_closure_gauge(closure)
+
+render_custom_gauge(closure_gauge, closure_color)
+
+st.markdown(
+    f"<b style='color:{closure_color}'>{closure_label}</b> — {round(closure,2)}",
+    unsafe_allow_html=True
+)
+
+st.caption("Ouverture cognitive ⟵⟶ Clôture cognitive")
+
+st.caption(closure_text)
+st.markdown(f"**{T['interpretation']} :** {cog.interpret()}")
+
+st.subheader(T["hard_fact_checking_by_claim"])
+claims_df = pd.DataFrame(
+    [
+        {
+            T["claim"]: c.text,
+            "Type": ", ".join(c.claim_types),
+            "Forme": c.aristotelian_type if c.aristotelian_type else "-",
+            "Sujet": c.subject_term if c.subject_term else "-",
+            "Prédicat": c.predicate_term if c.predicate_term else "-",
+            T["status"]: c.status,
+            f"{T['verifiability']} /20": c.verifiability,
+            f"{T['risk']} /20": c.risk,
+            "Ajustement": c.short_adjustment,
+            "Note épistémique": c.epistemic_note,
+            T["number"]: T["yes"] if c.has_number else T["no"],
+            T["date"]: T["yes"] if c.has_date else T["no"],
+            T["named_entity"]: T["yes"] if c.has_named_entity else T["no"],
+            T["attributed_source"]: T["yes"] if c.has_source_cue else T["no"],
+        }
+        for c in result["claims"]
+    ]
+)
+
+if not claims_df.empty:
+    st.dataframe(claims_df, use_container_width=True, hide_index=True)
+else:
+    st.info(T["paste_longer_text"])
+
+st.divider()
+st.subheader("Analyse syllogistique")
+
+if result.get("syllogisms"):
+    for i, s in enumerate(result["syllogisms"], start=1):
+        with st.expander(f"Syllogisme potentiel {i}", expanded=False):
+            st.write(f"**Forme** : {s['form']}")
+            st.write(f"**Terme moyen** : {s['middle_term'] if s['middle_term'] else '-'}")
+            st.write(f"**Figure** : {s['figure'] if s['figure'] else '-'}")
+            st.write(f"**Statut** : {s['status']}")
+
+            st.write("**Prémisse 1**")
+            st.write(s["premise_1"])
+            if "p1_terms" in s:
+                st.caption(f"Sujet : {s['p1_terms']['subject']} | Prédicat : {s['p1_terms']['predicate']}")
+
+            st.write("**Prémisse 2**")
+            st.write(s["premise_2"])
+            if "p2_terms" in s:
+                st.caption(f"Sujet : {s['p2_terms']['subject']} | Prédicat : {s['p2_terms']['predicate']}")
+
+            st.write("**Conclusion**")
+            st.write(s["conclusion"])
+            if "c_terms" in s:
+                st.caption(f"Sujet : {s['c_terms']['subject']} | Prédicat : {s['c_terms']['predicate']}")
+else:
+    st.info("Aucun syllogisme détecté.")
+
+st.divider()
+st.subheader("Enthymèmes détectés")
+
+if result.get("enthymemes"):
+    for i, e in enumerate(result["enthymemes"], start=1):
+        with st.expander(f"Enthymème potentiel {i}", expanded=False):
+            st.write(f"**Forme** : {e['form']}")
+            st.write(f"**Sujet** : {e['subject']}")
+            st.write(f"**Prédicat** : {e['predicate']}")
+            st.write(f"**Statut** : {e['status']}")
+
+            st.write("**Conclusion**")
+            st.write(e["conclusion"])
+
+            if e["context"]:
+                st.write("**Contexte précédent**")
+                for line in e["context"]:
+                    st.write(f"- {line}")
+else:
+    st.info("Aucun enthymème détecté.")
+
+st.divider()
+st.subheader("Sophismes syllogistiques")
+
+if result.get("fallacies"):
+    for i, f in enumerate(result["fallacies"], start=1):
+        with st.expander(f"Sophisme détecté {i}", expanded=False):
+            st.write(f"**Type** : {f['type']}")
+            st.write(f"**Description** : {f['description']}")
+
+            s = f["syllogism"]
+
+            st.write("**Prémisse 1**")
+            st.write(s["premise_1"])
+
+            st.write("**Prémisse 2**")
+            st.write(s["premise_2"])
+
+            st.write("**Conclusion**")
+            st.write(s["conclusion"])
+else:
+    st.info("Aucun sophisme syllogistique détecté.")
+
+st.divider()
+st.subheader(T["ai_module"])
+st.caption(T["ai_module_caption"])
+
+if client is None:
+    st.warning(T["ai_unavailable"])
+else:
+    if st.button(T["generate_ai_analysis"], key="generate_ai_analysis"):
+        with st.spinner("Analyse IA en cours..."):
+            ai_summary = generate_ai_summary(article_for_analysis, result)
+        st.subheader(T["ai_analysis_result"])
+        st.markdown(ai_summary)
+
+if st.session_state.get("article_source") == "paste":
+    st.divider()
+    st.subheader(T["external_corroboration_module"])
+    st.caption(T["external_corroboration_caption"])
+    with st.spinner(T["corroboration_in_progress"]):
+        corroboration = corroborate_claims(article_for_analysis, max_claims=5, max_results_per_claim=3)
+    if corroboration:
+        for i, item in enumerate(corroboration, start=1):
+            title_preview = item["claim"][:140] + ("..." if len(item["claim"]) > 140 else "")
+            with st.expander(f"{T['claim']} {i} : {title_preview}", expanded=(i == 1)):
+                st.markdown(f"**{T['corroboration_verdict']} :** {display_corroboration_verdict(item['verdict'])}")
+                st.markdown(f"**{T['generated_query']} :** `{item['query']}`")
+                if item["matches"]:
+                    for match in item["matches"]:
+                        st.markdown(f"**[{match['title']}]({match['url']})**")
+                        st.markdown(
+                            f"- **{T['match_score']}** : {match['match_score']['score']}\n"
+                            f"- **{T['contradiction_signal']}** : {T['detected'] if match['match_score']['contradiction_signal'] else T['not_detected']}"
+                        )
+                        if match["snippet"]:
+                            st.caption(match["snippet"])
+                else:
+                    st.warning(T["no_strong_sources_found"])
+    else:
+        st.info(T["no_corroboration_found"])
 
 # -----------------------------
 # Méthode
@@ -9170,9 +10848,7 @@ if show_method:
         f"- **{T['revisability']}** : `(G + N + V) - D`\n"
         f"- **{T['cognitive_closure']}** : `(D * S) / (G + N)`\n\n"
         f"{T['disclaimer']}"
-    )
-
-
+)
 # -----------------------------
 # Laboratoire interactif
 # -----------------------------

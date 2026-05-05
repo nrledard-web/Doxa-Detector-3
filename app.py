@@ -5270,6 +5270,70 @@ def compute_strong_certainty(text):
         )
     }
 
+# =====================================================
+# DÉTECTION DES DOMAINES CONCEPTUELS
+# =====================================================
+def contains_term(text: str, term: str) -> bool:
+    return re.search(rf"\b{re.escape(term.lower())}\b", text.lower()) is not None
+
+
+JOURNALISTIC_MARKERS = [
+    "selon", "d'après", "rapport", "étude", "enquête",
+    "article", "communiqué", "sondage", "journal", "presse",
+    "média", "journaliste", "source", "porte-parole",
+    "a déclaré", "a affirmé", "a indiqué", "a annoncé",
+    "selon une étude", "selon le rapport", "d'après les données",
+]
+
+PHILOSOPHICAL_MARKERS = [
+    "vérité", "réalité", "existence", "être", "essence",
+    "conscience", "raison", "pensée", "savoir", "croyance",
+    "doute", "concept", "principe", "idée", "notion",
+    "morale", "éthique", "justice", "liberté", "devoir",
+    "dans quelle mesure", "qu'est-ce que", "en ce sens",
+]
+
+RELIGIOUS_MARKERS = [
+    "dieu", "divin", "foi", "religion", "croyant",
+    "âme", "esprit", "sacré", "saint", "prière",
+    "rite", "culte", "église", "mosquée", "temple",
+    "prophète", "révélation", "évangile", "coran", "bible",
+    "péché", "salut", "grâce", "paradis", "enfer",
+]
+
+
+def detect_conceptual_domains(text: str):
+    t = text.lower()
+
+    domains = {
+        "journalistique": 0,
+        "philosophique": 0,
+        "religieux": 0,
+    }
+
+    terms = {
+        "journalistique": [],
+        "philosophique": [],
+        "religieux": [],
+    }
+
+    for marker in JOURNALISTIC_MARKERS:
+        if contains_term(t, marker):
+            domains["journalistique"] += 1
+            terms["journalistique"].append(marker)
+
+    for marker in PHILOSOPHICAL_MARKERS:
+        if contains_term(t, marker):
+            domains["philosophique"] += 1
+            terms["philosophique"].append(marker)
+
+    for marker in RELIGIOUS_MARKERS:
+        if contains_term(t, marker):
+            domains["religieux"] += 1
+            terms["religieux"].append(marker)
+
+    return domains, terms
+
 def analyze_article(text: str) -> Dict:
     words = text.split()
     sentences = [s.strip() for s in re.split(r"[.!?]+", text) if len(s.strip()) > 10]
@@ -5336,6 +5400,9 @@ def analyze_article(text: str) -> Dict:
     absolute_prediction_analysis = compute_absolute_prediction(text)
     threat_amplification_advanced_analysis = compute_threat_amplification_advanced(text)
     strong_certainty_analysis = compute_strong_certainty(text)
+
+    conceptual_domains, conceptual_terms = detect_conceptual_domains(text)
+
 
     # -----------------------------
     # Jauges structurelles avancées
@@ -5886,6 +5953,8 @@ def analyze_article(text: str) -> Dict:
         "strong_certainty_label": strong_certainty_analysis["label"],
         "strong_certainty_interpretation": strong_certainty_analysis["interpretation"],
 
+        
+
         "linguistic_trigger_count": ling["trigger_count"],
         "linguistic_pressure_hits": ling["rhetorical_pressure"],
         "absolute_claims": ling["absolute_claims"],
@@ -5951,6 +6020,9 @@ def analyze_article(text: str) -> Dict:
         "drift_intuition_dogmatique": drifts["drift_intuition_dogmatique"],
         "global_cognitive_drift": drifts["global_cognitive_drift"],
         "cognitive_drift_interpretation": drifts["cognitive_drift_interpretation"],
+
+        "conceptual_domains": conceptual_domains,
+        "conceptual_terms": conceptual_terms,
     }
 
     result["brain"] = brain
@@ -6314,30 +6386,63 @@ def detect_discourse_type(result):
     closure = result.get("cognitive_closure", 0)
     final_score = result.get("final_credibility_score", result.get("hard_fact_score", 0))
 
+    # Nouveaux marqueurs descriptifs uniquement
+    domains = result.get("conceptual_domains", {})
+
+    journalistic = domains.get("journalistique", 0)
+    philosophical = domains.get("philosophique", 0)
+    religious = domains.get("religieux", 0)
+
+    # 1) Priorité aux discours fortement orientés
     if propaganda >= 0.6 or rhetorical_pressure >= 0.7 or closure >= 0.7:
         return (
             "Discours propagandiste",
             "Forte pression rhétorique, simplification narrative ou fermeture cognitive."
         )
 
+    # 2) Discours religieux
+    if religious >= 2:
+        return (
+            "Discours religieux",
+            "Le texte mobilise un registre religieux, spirituel ou doctrinal."
+        )
+
+    # 3) Discours philosophique
+    if philosophical >= 2 and rhetorical_pressure < 0.5:
+        return (
+            "Discours philosophique",
+            "Le texte mobilise des notions abstraites, conceptuelles ou réflexives."
+        )
+
+    # 4) Discours journalistique
+    if journalistic >= 2 and V >= 4:
+        return (
+            "Discours journalistique",
+            "Le texte présente une forme informative avec attribution, rapport, enquête, étude ou référence médiatique."
+        )
+
+    # 5) Discours polémique
     if rhetorical_pressure >= 0.4 or D >= 7:
         return (
             "Discours polémique",
             "Argumentation orientée, certitude élevée ou pression rhétorique notable."
         )
 
+    # 6) Discours factuel
     if G >= 6 and V >= 6 and final_score >= 13:
         return (
             "Discours factuel",
             "Raisonnement appuyé sur des éléments vérifiables, des sources ou des faits identifiables."
         )
 
+    # 7) Ancien cas philosophique, gardé en secours
     if N >= 7 and G < 4 and V < 5 and rhetorical_pressure < 0.3:
         return (
             "Discours spéculatif / philosophique",
             "Réflexion conceptuelle cohérente, mais reposant surtout sur des idées générales plutôt que sur des éléments vérifiables."
         )
 
+    # 8) Discours analytique
     if N >= 6 and rhetorical_pressure < 0.4:
         return (
             "Discours analytique",
@@ -7671,23 +7776,45 @@ else:
     dominant_pattern = "Structure dominante : mixte ou ambiguë"
 
 if result["ME"] > result["M"] and result["ME"] > 0:
-    cognitive_type = "Mensonge stratégique possible"
+    cognitive_type = (
+        "Mensonge stratégique : la structuration du discours laisse apparaître "
+        "un désalignement cognitif pouvant suggérer une intention manipulatoire."
+    )
+
 elif result["M"] < 0:
-    cognitive_type = "Forte mécroyance / clôture cognitive"
+    cognitive_type = (
+        "Clôture cognitive : la certitude dépasse fortement "
+        "les éléments de savoir et de compréhension disponibles."
+    )
+
+elif result["M"] - result["ME"] > 3:
+    cognitive_type = (
+        "texte orienté avec absence d’intention manipulatoire détectée. "
+    )
+
+elif result["M"] > result["ME"]:
+    cognitive_type = (
+        "Le discours présente un désalignement cognitif notable, "
+        "sans indication claire de manipulation."
+    )
+
 else:
-    cognitive_type = "Structure fortement désalignée, compatible avec une construction de type mensonge, sans indication claire d’intention manipulatoire."
+    cognitive_type = (
+        "Zone ambiguë : le discours présente une tension cognitive difficile à trancher "
+        "entre erreur sincère et orientation stratégique."
+    )
 
 st.subheader("Interprétation cognitive")
 st.write(cognitive_type)
 
 if result["M"] - result["ME"] > 3:
-    diagnosis = "Structure de mécroyance forte"
+    diagnosis = "Mécroyance avérée"
 elif result["M"] > result["ME"]:
-    diagnosis = "Structure de mécroyance modérée"
+    diagnosis = "Mécroyance modérée"
 elif abs(result["M"] - result["ME"]) <= 1:
     diagnosis = "Structure cognitive ambiguë"
 else:
-    diagnosis = "Tromperie stratégique possible"
+    diagnosis = "Tromperie stratégique possible ou mensonge"
 
 st.subheader("Diagnostic cognitif")
 st.write(diagnosis)
@@ -7731,191 +7858,191 @@ La certitude paraît plus forte que les preuves disponibles, mais les signaux ne
 else:
     pass
     
-    st.markdown("""
-    <div style="text-align:center; margin:25px 0; color:#888;">
-    ────────── ✦ ──────────
+st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<h3 style="text-align:center;">VERDICT FINAL</h3>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div style="text-align:center; margin:25px 0; color:#888;">
+────────── ✦ ──────────
+</div>
+""", unsafe_allow_html=True)
+
+
+# =============================
+# Barre de crédibilité finale
+# =============================
+final_score = result.get("final_credibility_score", score)
+
+if final_score < 6:
+    couleur_c = "🔴"
+    color_c = "#dc2626"
+    etiquette_c = "Très fragile"
+    message_c = "Le texte présente de fortes fragilités structurelles ou vérifiables."
+elif final_score < 9:
+    couleur_c = "🟠"
+    color_c = "#f97316"
+    etiquette_c = "Fragile"
+    message_c = "Le texte contient plusieurs fragilités importantes."
+elif final_score < 13:
+    couleur_c = "🟡"
+    color_c = "#facc15"
+    etiquette_c = "Prudente"
+    message_c = "Le raisonnement est présent, mais certaines affirmations reposent davantage sur des idées générales que sur des éléments vérifiables."
+elif final_score < 16:
+    couleur_c = "🟢"
+    color_c = "#22c55e"
+    etiquette_c = "Solide"
+    message_c = "Le texte présente une crédibilité globale correcte, avec peu de signaux problématiques."
+else:
+    couleur_c = "🟢"
+    color_c = "#15803d"
+    etiquette_c = "Très solide"
+    message_c = "Le texte présente une structure cognitive robuste et peu de signaux de fragilité."
+
+st.subheader(f"{couleur_c} Crédibilité finale : {etiquette_c}")
+
+st.caption(
+    "Cette jauge synthétise la crédibilité globale du texte en combinant "
+    "la solidité factuelle, l’équilibre cognitif entre savoir et certitude, "
+    "et la pression discursive détectée dans le langage."
+)
+
+st.markdown(f"""
+<div style="width:100%; margin-top:10px; margin-bottom:10px;">
+    <div style="
+        width:100%;
+        height:26px;
+        background:#e5e7eb;
+        border-radius:12px;
+        overflow:hidden;
+        border:1px solid #cbd5e1;
+    ">
+        <div style="
+            width:{min(final_score / 20, 1) * 100}%;
+            height:100%;
+            background:{color_c};
+            transition:width 0.4s ease;
+        "></div>
     </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <h3 style="text-align:center;">VERDICT FINAL</h3>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div style="text-align:center; margin:25px 0; color:#888;">
-    ────────── ✦ ──────────
-    </div>
-    """, unsafe_allow_html=True)
+</div>
+""", unsafe_allow_html=True)
 
+st.markdown(
+    f"<b style='color:{color_c}'>{etiquette_c}</b> — Score final : {round(final_score,1)}/20",
+    unsafe_allow_html=True
+)
 
-    # =============================
-    # Barre de crédibilité finale
-    # =============================
-    final_score = result.get("final_credibility_score", score)
+st.caption(message_c)
 
-    if final_score < 6:
-        couleur_c = "🔴"
-        color_c = "#dc2626"
-        etiquette_c = "Très fragile"
-        message_c = "Le texte présente de fortes fragilités structurelles ou vérifiables."
-    elif final_score < 9:
-        couleur_c = "🟠"
-        color_c = "#f97316"
-        etiquette_c = "Fragile"
-        message_c = "Le texte contient plusieurs fragilités importantes."
-    elif final_score < 13:
-        couleur_c = "🟡"
-        color_c = "#facc15"
-        etiquette_c = "Prudente"
-        message_c = "Le raisonnement est présent, mais certaines affirmations reposent davantage sur des idées générales que sur des éléments vérifiables."
-    elif final_score < 16:
-        couleur_c = "🟢"
-        color_c = "#22c55e"
-        etiquette_c = "Solide"
-        message_c = "Le texte présente une crédibilité globale correcte, avec peu de signaux problématiques."
-    else:
-        couleur_c = "🟢"
-        color_c = "#15803d"
-        etiquette_c = "Très solide"
-        message_c = "Le texte présente une structure cognitive robuste et peu de signaux de fragilité."
+with st.popover("ℹ️ Formule / explication"):
+
+    st.subheader(f"{T['verdict']} : {couleur_c} Crédibilité finale — {etiquette_c}")
+    st.caption(f"Score final : {round(final_score, 1)}/20 — {message_c}")
+    st.subheader(T["summary"])
+
+    m1, m2 = st.columns(2)
+    m1.metric("HFS", round(result["hard_fact_score"], 1))
+    m2.metric("G — gnōsis", round(result["G"], 2))
     
-    st.subheader(f"{couleur_c} Crédibilité finale : {etiquette_c}")
+    m3, m4 = st.columns(2)
+    m3.metric("N — nous", round(result["N"], 2))
+    m4.metric("D — doxa", round(result["D"], 2))
     
-    st.caption(
-        "Cette jauge synthétise la crédibilité globale du texte en combinant "
-        "la solidité factuelle, l’équilibre cognitif entre savoir et certitude, "
-        "et la pression discursive détectée dans le langage."
-    )
+    m5, m6 = st.columns(2)
+    m5.metric("Pression discursive", round(result.get("discursive_pressure", 0), 2))
+    m6.metric("ID", round(result.get("ID", 0), 2))
+    
+    m7, m8 = st.columns(2)
+    m7.metric("Pénalité jauges", round(result.get("display_gauge_penalty", 0), 2))
+    m8.metric("Score final", round(final_score, 1))
     
     st.markdown(f"""
-    <div style="width:100%; margin-top:10px; margin-bottom:10px;">
-        <div style="
-            width:100%;
-            height:26px;
-            background:#e5e7eb;
-            border-radius:12px;
-            overflow:hidden;
-            border:1px solid #cbd5e1;
-        ">
-            <div style="
-                width:{min(final_score / 20, 1) * 100}%;
-                height:100%;
-                background:{color_c};
-                transition:width 0.4s ease;
-            "></div>
-        </div>
+    Cette jauge synthétise la **crédibilité globale du texte**.
+    
+    Elle combine trois dimensions :
+    
+    - la solidité factuelle du texte  
+    - l’équilibre cognitif entre connaissance, compréhension et certitude  
+    - la pression discursive détectée dans le langage  
+    
+    ---
+    
+    ### 1️⃣ Solidité factuelle
+    
+    `HFS = hard_fact_score / 20`
+    
+    Dans cette analyse :
+    
+    `HFS = {round(result["hard_fact_score"], 1)} / 20`
+    
+    ---
+    
+    ### 2️⃣ Calibration cognitive
+    
+    `OC = (G + N) / (G + N + D)`
+    
+    avec :
+    
+    G = gnōsis  
+    N = nous  
+    D = doxa  
+    
+    Dans cette analyse :
+    
+    `OC = ({round(result["G"],2)} + {round(result["N"],2)}) / ({round(result["G"],2)} + {round(result["N"],2)} + {round(result["D"],2)})`
+    
+    `OC ≈ {round((result["G"] + result["N"]) / max((result["G"] + result["N"] + result["D"]), 1), 2)}`
+    
+    ---
+    
+    ### 3️⃣ Indice de pression discursive
+    
+    `ID = 1 − pression_discursive`
+    
+    avec :
+    
+    `pression_discursive = propagande + pression_rhétorique`
+    
+    Plus la pression discursive est forte, plus le score final diminue.
+    
+    ---
+    
+    ### 4️⃣ Formule heuristique principale
+    
+    `score_initial = 20 × HFS × OC × ID`
+    
+    ---
+    
+    ### 5️⃣ Ajustement final
+    
+    `score_final = score_initial − pénalité_jauges`
+    
+    Score final observé :
+    
+    `score_final = {round(final_score, 1)} / 20`
+    
+    ---
+    
+    ### Interprétation du score final
+    
+    0–5 : crédibilité très fragile  
+    6–9 : crédibilité fragile  
+    10–14 : crédibilité prudente  
+    15–20 : crédibilité robuste
+    """)
+
+    st.markdown("""
+    <div style="text-align:center; margin:25px 0; color:#bbb;">
+    ✦ ✦ ✦
     </div>
     """, unsafe_allow_html=True)
-    
-    st.markdown(
-        f"<b style='color:{color_c}'>{etiquette_c}</b> — Score final : {round(final_score,1)}/20",
-        unsafe_allow_html=True
-    )
-    
-    st.caption(message_c)
-    
-    with st.popover("ℹ️ Formule / explication"):
-    
-        st.subheader(f"{T['verdict']} : {couleur_c} Crédibilité finale — {etiquette_c}")
-        st.caption(f"Score final : {round(final_score, 1)}/20 — {message_c}")
-        st.subheader(T["summary"])
-    
-        m1, m2 = st.columns(2)
-        m1.metric("HFS", round(result["hard_fact_score"], 1))
-        m2.metric("G — gnōsis", round(result["G"], 2))
-        
-        m3, m4 = st.columns(2)
-        m3.metric("N — nous", round(result["N"], 2))
-        m4.metric("D — doxa", round(result["D"], 2))
-        
-        m5, m6 = st.columns(2)
-        m5.metric("Pression discursive", round(result.get("discursive_pressure", 0), 2))
-        m6.metric("ID", round(result.get("ID", 0), 2))
-        
-        m7, m8 = st.columns(2)
-        m7.metric("Pénalité jauges", round(result.get("display_gauge_penalty", 0), 2))
-        m8.metric("Score final", round(final_score, 1))
-        
-        st.markdown(f"""
-        Cette jauge synthétise la **crédibilité globale du texte**.
-        
-        Elle combine trois dimensions :
-        
-        - la solidité factuelle du texte  
-        - l’équilibre cognitif entre connaissance, compréhension et certitude  
-        - la pression discursive détectée dans le langage  
-        
-        ---
-        
-        ### 1️⃣ Solidité factuelle
-        
-        `HFS = hard_fact_score / 20`
-        
-        Dans cette analyse :
-        
-        `HFS = {round(result["hard_fact_score"], 1)} / 20`
-        
-        ---
-        
-        ### 2️⃣ Calibration cognitive
-        
-        `OC = (G + N) / (G + N + D)`
-        
-        avec :
-        
-        G = gnōsis  
-        N = nous  
-        D = doxa  
-        
-        Dans cette analyse :
-        
-        `OC = ({round(result["G"],2)} + {round(result["N"],2)}) / ({round(result["G"],2)} + {round(result["N"],2)} + {round(result["D"],2)})`
-        
-        `OC ≈ {round((result["G"] + result["N"]) / max((result["G"] + result["N"] + result["D"]), 1), 2)}`
-        
-        ---
-        
-        ### 3️⃣ Indice de pression discursive
-        
-        `ID = 1 − pression_discursive`
-        
-        avec :
-        
-        `pression_discursive = propagande + pression_rhétorique`
-        
-        Plus la pression discursive est forte, plus le score final diminue.
-        
-        ---
-        
-        ### 4️⃣ Formule heuristique principale
-        
-        `score_initial = 20 × HFS × OC × ID`
-        
-        ---
-        
-        ### 5️⃣ Ajustement final
-        
-        `score_final = score_initial − pénalité_jauges`
-        
-        Score final observé :
-        
-        `score_final = {round(final_score, 1)} / 20`
-        
-        ---
-        
-        ### Interprétation du score final
-        
-        0–5 : crédibilité très fragile  
-        6–9 : crédibilité fragile  
-        10–14 : crédibilité prudente  
-        15–20 : crédibilité robuste
-        """)
-    
-        st.markdown("""
-        <div style="text-align:center; margin:25px 0; color:#bbb;">
-        ✦ ✦ ✦
-        </div>
-        """, unsafe_allow_html=True)
     
 st.markdown("""
 <div style="text-align:center; margin:25px 0; color:#888;">

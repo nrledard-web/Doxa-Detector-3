@@ -10781,7 +10781,7 @@ st.divider()
 st.subheader("⚖️ Analyse logique")
 st.caption("Identification des erreurs de raisonnement et des structures logiques.")
 
-al1, al2, al3 = st.columns(3)
+al1, al2, al3, al4 = st.columns(4)
 
 # -----------------------------
 #  Confusion logique
@@ -11025,12 +11025,174 @@ with al3:
             "Un faux dilemme élevé ne signifie pas que le texte est faux. "
             "Il indique une simplification excessive qui peut masquer d’autres possibilités."
         )
+# -----------------------------
+#  Confusion descriptif / normatif
+# -----------------------------
+with al4:
+    st.markdown("### Confusion descriptif / normatif")
+    st.caption("Glissement d’une description vers une injonction sans justification suffisante.")
 
-al4, al5, al6, al7, = st.columns(4)
+    value = result["descriptive_normative_confusion_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+
+    st.caption(result["descriptive_normative_confusion_interpretation"])
+
+    with st.expander("🔎 Voir les marqueurs", expanded=False):
+        markers = result.get("descriptive_normative_confusion_markers", [])
+        if not markers:
+            st.info("Aucune confusion descriptif / normatif notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Confusion descriptif / normatif")
+
+        st.write(
+            "Cette jauge détecte les situations où un fait ou une description "
+            "est transformé en jugement, norme ou injonction sans justification."
+        )
+
+        st.markdown("**Principe**")
+        st.write(
+            "Le texte est comparé à des marqueurs de glissement normatif : "
+            "passage du descriptif (« ce qui est ») au normatif (« ce qui doit être ») "
+            "sans étape argumentative explicite."
+        )
+
+        st.markdown("**Formule utilisée**")
+        st.code(
+            "markers = confusions descriptif/normatif détectées\n"
+            "score = min(len(markers) * coefficient / 10, 1.0)",
+            language="python"
+        )
+
+        markers = result.get("descriptive_normative_confusion_markers", [])
+
+        st.markdown("**Valeur actuelle**")
+        st.write(f"Score : **{round(value * 100, 1)}%**")
+        st.write(f"Niveau : **{label}**")
+        st.write(f"Marqueurs détectés : **{len(markers)}**")
+
+        st.markdown("**Interprétation actuelle**")
+        st.write(result["descriptive_normative_confusion_interpretation"])
+
+        st.markdown("**Lecture**")
+        st.write(
+            "🟢 Faible : distinction claire entre faits et jugements\n"
+            "🟡 Modérée : glissements ponctuels\n"
+            "🟠 Élevée : confusion notable entre description et norme\n"
+            "🔴 Très élevée : injonctions déguisées en faits"
+        )
+
+        st.markdown("**Attention**")
+        st.write(
+            "Une confusion descriptif / normatif élevée ne signifie pas que le texte est faux. "
+            "Elle indique que des jugements ou normes sont présentés comme des faits."
+        )
+
+al5, al6, al7, al8, = st.columns(4)
 # -----------------------------
 #  Pétition de principe
 # -----------------------------
-with al4:
+with al5:
+    st.markdown("### Confusion descriptif / normatif")
+    st.caption("Glissement d’une description vers une injonction sans justification suffisante.")
+
+    value = result["descriptive_normative_confusion_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+
+    st.caption(result["descriptive_normative_confusion_interpretation"])
+
+    with st.expander("🔎 Voir les marqueurs", expanded=False):
+        markers = result.get("descriptive_normative_confusion_markers", [])
+        if not markers:
+            st.info("Aucune confusion descriptif / normatif notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Confusion descriptif / normatif")
+
+        st.write(
+            "Cette jauge détecte les situations où un fait ou une description "
+            "est transformé en jugement, norme ou injonction sans justification."
+        )
+
+        st.markdown("**Principe**")
+        st.write(
+            "Le texte est comparé à des marqueurs de glissement normatif : "
+            "passage du descriptif (« ce qui est ») au normatif (« ce qui doit être ») "
+            "sans étape argumentative explicite."
+        )
+
+        st.markdown("**Formule utilisée**")
+        st.code(
+            "markers = confusions descriptif/normatif détectées\n"
+            "score = min(len(markers) * coefficient / 10, 1.0)",
+            language="python"
+        )
+
+        markers = result.get("descriptive_normative_confusion_markers", [])
+
+        st.markdown("**Valeur actuelle**")
+        st.write(f"Score : **{round(value * 100, 1)}%**")
+        st.write(f"Niveau : **{label}**")
+        st.write(f"Marqueurs détectés : **{len(markers)}**")
+
+        st.markdown("**Interprétation actuelle**")
+        st.write(result["descriptive_normative_confusion_interpretation"])
+
+        st.markdown("**Lecture**")
+        st.write(
+            "🟢 Faible : distinction claire entre faits et jugements\n"
+            "🟡 Modérée : glissements ponctuels\n"
+            "🟠 Élevée : confusion notable entre description et norme\n"
+            "🔴 Très élevée : injonctions déguisées en faits"
+        )
+
+        st.markdown("**Attention**")
+        st.write(
+            "Une confusion descriptif / normatif élevée ne signifie pas que le texte est faux. "
+            "Elle indique que des jugements ou normes sont présentés comme des faits."
+        )
+
+
+# -----------------------------
+#  Pétition de principe
+# -----------------------------
+with al6:
     st.markdown("### Pétition de principe")
     st.caption("Conclusion répétée comme si elle constituait une preuve.")
 
@@ -11109,7 +11271,7 @@ with al4:
 # -----------------------------
 # Cherry Picking
 # -----------------------------
-with al5:
+with al7:
     st.markdown("### Cherry Picking")
     st.caption("Sélection biaisée d’exemples, de cas ou de preuves allant dans un seul sens.")
 
@@ -11201,7 +11363,7 @@ with al5:
 # -----------------------------
 #  Sophismes syllogistiques détectés
 # -----------------------------
-with al6:
+with al8:
     st.markdown("### Sophismes syllogistiques détectés")
     st.caption("Failles formelles ou conclusions invalides dans les raisonnements syllogistiques.")
 
@@ -11264,10 +11426,12 @@ with al6:
             "L’absence de sophisme détecté ne signifie pas que le texte est vrai. "
             "Elle signifie seulement qu’aucune faille syllogistique formelle n’a été repérée."
         )
+
+al9, al10, al11, al12 = st.columns(4)
 # -----------------------------
 #  Syllogismes / Enthymèmes détectés
 # -----------------------------
-with al7:
+with al9:
     st.markdown("### Syllogismes / Enthymèmes détectés")
     st.caption("Raisonnements incomplets ou implicites repérés dans le texte.")
 
@@ -11328,6 +11492,408 @@ with al7:
         st.write(
             "Un enthymème n’est pas forcément une erreur. "
             "Il indique seulement qu’une partie du raisonnement est laissée implicite."
+        )
+
+# -----------------------------
+# Fausse analogie
+# -----------------------------
+with al10:
+    st.markdown("### Fausse analogie")
+    st.caption("Comparaisons trompeuses qui court-circuitent l’analyse.")
+
+    value = result["false_analogy_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+
+    st.caption(result["false_analogy_interpretation"])
+
+    with st.expander("🔎 Voir les marqueurs", expanded=False):
+        markers = result.get("false_analogy_markers", [])
+        if not markers:
+            st.info("Aucune fausse analogie notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Fausse analogie")
+
+        st.write(
+            "Cette jauge détecte les comparaisons qui rapprochent deux situations "
+            "de manière trompeuse ou simplificatrice."
+        )
+
+        st.markdown("**Principe**")
+        st.write(
+            "Le texte est comparé à des marqueurs d’analogie douteuse : "
+            "rapprochements abusifs, comparaisons rapides ou équivalences non démontrées."
+        )
+
+        st.markdown("**Formule utilisée**")
+        st.code(
+            "markers = analogies trompeuses détectées\n"
+            "score = min(len(markers) * coefficient / 10, 1.0)",
+            language="python"
+        )
+
+        markers = result.get("false_analogy_markers", [])
+
+        st.markdown("**Valeur actuelle**")
+        st.write(f"Score : **{round(value * 100, 1)}%**")
+        st.write(f"Niveau : **{label}**")
+        st.write(f"Marqueurs détectés : **{len(markers)}**")
+
+        st.markdown("**Interprétation actuelle**")
+        st.write(result["false_analogy_interpretation"])
+
+        st.markdown("**Lecture**")
+        st.write(
+            "🟢 Faible : comparaisons pertinentes ou absentes\n"
+            "🟡 Modérée : analogies discutables ponctuelles\n"
+            "🟠 Élevée : analogies trompeuses notables\n"
+            "🔴 Très élevée : analogies abusives dominantes"
+        )
+
+        st.markdown("**Attention**")
+        st.write(
+            "Une fausse analogie élevée ne signifie pas que le texte est faux. "
+            "Elle indique que le raisonnement repose sur des comparaisons fragiles."
+        )
+
+# -----------------------------
+#  Surinterprétation factuelle
+# -----------------------------
+with al11:
+    st.markdown("### Surinterprétation factuelle")
+    st.caption("Conclusions excessives tirées à partir d’indices partiels.")
+
+    value = result["factual_overinterpretation_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+
+    st.caption(result["factual_overinterpretation_interpretation"])
+
+    with st.expander("🔎 Voir les marqueurs", expanded=False):
+        markers = result.get("factual_overinterpretation_markers", [])
+        if not markers:
+            st.info("Aucune surinterprétation factuelle notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Surinterprétation factuelle")
+
+        st.write(
+            "Cette jauge détecte les situations où des conclusions sont tirées "
+            "à partir d’indices partiels, insuffisants ou mal étayés."
+        )
+
+        st.markdown("**Principe**")
+        st.write(
+            "Le texte est comparé à des marqueurs de surinterprétation : "
+            "généralisation rapide, extrapolation excessive, ou conclusions "
+            "qui dépassent les éléments disponibles."
+        )
+
+        st.markdown("**Formule utilisée**")
+        st.code(
+            "markers = surinterprétations détectées\n"
+            "score = min(len(markers) * coefficient / 10, 1.0)",
+            language="python"
+        )
+
+        markers = result.get("factual_overinterpretation_markers", [])
+
+        st.markdown("**Valeur actuelle**")
+        st.write(f"Score : **{round(value * 100, 1)}%**")
+        st.write(f"Niveau : **{label}**")
+        st.write(f"Marqueurs détectés : **{len(markers)}**")
+
+        st.markdown("**Interprétation actuelle**")
+        st.write(result["factual_overinterpretation_interpretation"])
+
+        st.markdown("**Lecture**")
+        st.write(
+            "🟢 Faible : conclusions proportionnées aux faits\n"
+            "🟡 Modérée : extrapolations ponctuelles\n"
+            "🟠 Élevée : conclusions excessives notables\n"
+            "🔴 Très élevée : surinterprétation dominante"
+        )
+
+        st.markdown("**Attention**")
+        st.write(
+            "Une surinterprétation factuelle élevée ne signifie pas que le texte est faux. "
+            "Elle indique que les conclusions dépassent les éléments réellement disponibles."
+        )
+# =============================
+# Fausse causalité (simple)
+# =============================
+with al12:
+    st.markdown("### Fausse causalité (simple)")
+    st.caption("Lien causal affirmé sans démonstration suffisante.")
+
+    value = result["false_causality_basic_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+
+    st.caption(result["false_causality_basic_interpretation"])
+
+    with st.expander("🔎 Voir les marqueurs", expanded=False):
+        markers = result.get("false_causality_basic_markers", [])
+        if not markers:
+            st.info("Aucune fausse causalité simple notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Fausse causalité (simple)")
+
+        st.write(
+            "Cette jauge détecte les situations où un lien de cause à effet est affirmé "
+            "sans preuve suffisante ou sans démonstration rigoureuse."
+        )
+
+        st.markdown("**Principe**")
+        st.write(
+            "Le texte est comparé à des marqueurs de causalité abusive : "
+            "enchaînement rapide d’événements, corrélation présentée comme causalité, "
+            "ou conclusion causale non justifiée."
+        )
+
+        st.markdown("**Formule utilisée**")
+        st.code(
+            "markers = causalités abusives détectées\n"
+            "score = min(len(markers) * coefficient / 10, 1.0)",
+            language="python"
+        )
+
+        markers = result.get("false_causality_basic_markers", [])
+
+        st.markdown("**Valeur actuelle**")
+        st.write(f"Score : **{round(value * 100, 1)}%**")
+        st.write(f"Niveau : **{label}**")
+        st.write(f"Marqueurs détectés : **{len(markers)}**")
+
+        st.markdown("**Interprétation actuelle**")
+        st.write(result["false_causality_basic_interpretation"])
+
+        st.markdown("**Lecture**")
+        st.write(
+            "🟢 Faible : causalité peu affirmée ou prudente\n"
+            "🟡 Modérée : liens causaux discutables ponctuels\n"
+            "🟠 Élevée : causalité abusive notable\n"
+            "🔴 Très élevée : causalité non démontrée dominante"
+        )
+
+        st.markdown("**Attention**")
+        st.write(
+            "Une fausse causalité élevée ne signifie pas que la relation est fausse. "
+            "Elle indique que le lien causal est affirmé plus vite qu’il n’est démontré."
+        )
+al13, al14 = st.columns(2)
+# -----------------------------
+#  Généralisation abusive
+# -----------------------------
+with al13:
+    st.markdown("### Généralisation abusive")
+    st.caption("Simplification du réel par catégories globales.")
+
+    generalization_value = result["generalization_score"]
+
+    if generalization_value < 0.20:
+        generalization_label, generalization_color = "Faible", "#ca8a04"
+    elif generalization_value < 0.40:
+        generalization_label, generalization_color = "Modérée", "#f97316"
+    elif generalization_value < 0.70:
+        generalization_label, generalization_color = "Élevée", "#ea580c"
+    else:
+        generalization_label, generalization_color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(generalization_value, generalization_color)
+
+    st.markdown(
+        f"<b style='color:{generalization_color}'>{generalization_label}</b> — {round(generalization_value * 100, 1)}%",
+        unsafe_allow_html=True
+    )
+
+    st.caption(result["generalization_interpretation"])
+
+    with st.expander("🔎 Voir les marqueurs", expanded=False):
+        markers = result.get("generalization_markers", [])
+        if not markers:
+            st.info("Aucune généralisation abusive notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Généralisation abusive")
+
+        st.write(
+            "Cette jauge détecte les situations où des cas particuliers sont transformés "
+            "en règles générales ou en vérités globales."
+        )
+
+        st.markdown("**Principe**")
+        st.write(
+            "Le texte est comparé à des marqueurs de généralisation : "
+            "emploi de termes globaux (toujours, jamais, tous, etc.), "
+            "ou extension abusive d’un cas à l’ensemble."
+        )
+
+        st.markdown("**Formule utilisée**")
+        st.code(
+            "markers = généralisations détectées\n"
+            "score = min(len(markers) * coefficient / 10, 1.0)",
+            language="python"
+        )
+
+        markers = result.get("generalization_markers", [])
+
+        st.markdown("**Valeur actuelle**")
+        st.write(f"Score : **{round(generalization_value * 100, 1)}%**")
+        st.write(f"Niveau : **{generalization_label}**")
+        st.write(f"Marqueurs détectés : **{len(markers)}**")
+
+        st.markdown("**Interprétation actuelle**")
+        st.write(result["generalization_interpretation"])
+
+        st.markdown("**Lecture**")
+        st.write(
+            "🟢 Faible : discours nuancé\n"
+            "🟡 Modérée : généralisations ponctuelles\n"
+            "🟠 Élevée : généralisation notable\n"
+            "🔴 Très élevée : généralisation dominante"
+        )
+
+        st.markdown("**Attention**")
+        st.write(
+            "Une généralisation abusive élevée ne signifie pas que le texte est faux. "
+            "Elle indique que le discours simplifie excessivement la réalité."
+        )
+# =============================
+# Confusion descriptif / normatif
+# =============================
+with al14:
+    st.markdown("### Confusion descriptif / normatif")
+    st.caption("Glissement d’une description vers une injonction sans justification suffisante.")
+
+    value = result["descriptive_normative_confusion_score"]
+
+    if value < 0.15:
+        label, color = "Faible", "#ca8a04"
+    elif value < 0.35:
+        label, color = "Modérée", "#f97316"
+    elif value < 0.60:
+        label, color = "Élevée", "#ea580c"
+    else:
+        label, color = "Très élevée", "#dc2626"
+
+    render_custom_gauge(value, color)
+
+    st.markdown(
+        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
+        unsafe_allow_html=True
+    )
+
+    st.caption(result["descriptive_normative_confusion_interpretation"])
+
+    with st.expander("🔎 Voir les marqueurs", expanded=False):
+        markers = result.get("descriptive_normative_confusion_markers", [])
+        if not markers:
+            st.info("Aucune confusion descriptif / normatif notable détectée.")
+        else:
+            for marker in markers:
+                st.warning(marker)
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+        st.markdown("### Confusion descriptif / normatif")
+
+        st.write(
+            "Cette jauge détecte les situations où un fait ou une description "
+            "est transformé en jugement, norme ou injonction sans justification."
+        )
+
+        st.markdown("**Principe**")
+        st.write(
+            "Le texte est comparé à des marqueurs de glissement normatif : "
+            "passage du descriptif (« ce qui est ») au normatif (« ce qui doit être ») "
+            "sans étape argumentative explicite."
+        )
+
+        st.markdown("**Formule utilisée**")
+        st.code(
+            "markers = confusions descriptif/normatif détectées\n"
+            "score = min(len(markers) * coefficient / 10, 1.0)",
+            language="python"
+        )
+
+        markers = result.get("descriptive_normative_confusion_markers", [])
+
+        st.markdown("**Valeur actuelle**")
+        st.write(f"Score : **{round(value * 100, 1)}%**")
+        st.write(f"Niveau : **{label}**")
+        st.write(f"Marqueurs détectés : **{len(markers)}**")
+
+        st.markdown("**Interprétation actuelle**")
+        st.write(result["descriptive_normative_confusion_interpretation"])
+
+        st.markdown("**Lecture**")
+        st.write(
+            "🟢 Faible : distinction claire entre faits et jugements\n"
+            "🟡 Modérée : glissements ponctuels\n"
+            "🟠 Élevée : confusion notable entre description et norme\n"
+            "🔴 Très élevée : injonctions déguisées en faits"
+        )
+
+        st.markdown("**Attention**")
+        st.write(
+            "Une confusion descriptif / normatif élevée ne signifie pas que le texte est faux. "
+            "Elle indique que des jugements ou normes sont présentés comme des faits."
         )
 
 st.divider()
@@ -11803,39 +12369,6 @@ row14_col1, row14_col2, row14_col3 = st.columns(3)
 row15_col1, row15_col2 = st.columns(2)
 
 # -----------------------------
-# 10) Généralisation abusive
-# -----------------------------
-with row4_col1:
-    st.markdown("### Généralisation abusive")
-    st.caption("Simplification du réel par catégories globales.")
-
-    generalization_value = result["generalization_score"]
-
-    if generalization_value < 0.20:
-        generalization_label, generalization_color = "Faible", "#ca8a04"
-    elif generalization_value < 0.40:
-        generalization_label, generalization_color = "Modérée", "#f97316"
-    elif generalization_value < 0.70:
-        generalization_label, generalization_color = "Élevée", "#ea580c"
-    else:
-        generalization_label, generalization_color = "Très élevée", "#dc2626"
-
-    render_custom_gauge(generalization_value, generalization_color)
-
-    st.markdown(
-        f"<b style='color:{generalization_color}'>{generalization_label}</b> — {round(generalization_value * 100, 1)}%",
-        unsafe_allow_html=True
-    )
-    st.caption(result["generalization_interpretation"])
-
-    with st.expander("Voir les marqueurs", expanded=False):
-        markers = result.get("generalization_markers", [])
-        if not markers:
-            st.info("Aucune généralisation abusive notable détectée.")
-        else:
-            for marker in markers:
-                st.warning(marker)
-# -----------------------------
 # 14) Opposition binaire
 # -----------------------------
 with row5_col2:
@@ -11865,66 +12398,6 @@ with row5_col2:
         markers = result.get("binary_opposition_markers", [])
         if not markers:
             st.info("Aucune opposition binaire notable détectée.")
-        else:
-            for marker in markers:
-                st.warning(marker)
-
-# -----------------------------
-# 19) Fausse analogie
-# -----------------------------
-with row7_col1:
-    st.markdown("### Fausse analogie")
-    st.caption("Comparaisons trompeuses qui court-circuitent l’analyse.")
-
-    value = result["false_analogy_score"]
-
-    if value < 0.15:
-        label, color = "Faible", "#ca8a04"
-    elif value < 0.35:
-        label, color = "Modérée", "#f97316"
-    elif value < 0.60:
-        label, color = "Élevée", "#ea580c"
-    else:
-        label, color = "Très élevée", "#dc2626"
-
-    render_custom_gauge(value, color)
-    st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
-    st.caption(result["false_analogy_interpretation"])
-
-    with st.expander("Voir les marqueurs", expanded=False):
-        markers = result.get("false_analogy_markers", [])
-        if not markers:
-            st.info("Aucune fausse analogie notable détectée.")
-        else:
-            for marker in markers:
-                st.warning(marker)
-
-# -----------------------------
-# 20) Surinterprétation factuelle
-# -----------------------------
-with row7_col2:
-    st.markdown("### Surinterprétation factuelle")
-    st.caption("Conclusions excessives tirées à partir d’indices partiels.")
-
-    value = result["factual_overinterpretation_score"]
-
-    if value < 0.15:
-        label, color = "Faible", "#ca8a04"
-    elif value < 0.35:
-        label, color = "Modérée", "#f97316"
-    elif value < 0.60:
-        label, color = "Élevée", "#ea580c"
-    else:
-        label, color = "Très élevée", "#dc2626"
-
-    render_custom_gauge(value, color)
-    st.markdown(f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%", unsafe_allow_html=True)
-    st.caption(result["factual_overinterpretation_interpretation"])
-
-    with st.expander("Voir les marqueurs", expanded=False):
-        markers = result.get("factual_overinterpretation_markers", [])
-        if not markers:
-            st.info("Aucune surinterprétation factuelle notable détectée.")
         else:
             for marker in markers:
                 st.warning(marker)
@@ -12072,36 +12545,6 @@ for title, score, label, interpretation in gauges:
     if interpretation:
         st.write(interpretation)
 
-with row10_col2:
-    st.markdown("### Fausse causalité (simple)")
-    st.caption("Lien causal affirmé sans démonstration suffisante.")
-
-    value = result["false_causality_basic_score"]
-
-    if value < 0.15:
-        label, color = "Faible", "#ca8a04"
-    elif value < 0.35:
-        label, color = "Modérée", "#f97316"
-    elif value < 0.60:
-        label, color = "Élevée", "#ea580c"
-    else:
-        label, color = "Très élevée", "#dc2626"
-
-    render_custom_gauge(value, color)
-    st.markdown(
-        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-        unsafe_allow_html=True
-    )
-    st.caption(result["false_causality_basic_interpretation"])
-
-    with st.expander("Voir les marqueurs", expanded=False):
-        markers = result.get("false_causality_basic_markers", [])
-        if not markers:
-            st.info("Aucune fausse causalité simple notable détectée.")
-        else:
-            for marker in markers:
-                st.warning(marker)
-
 with row10_col3:
     st.markdown("### Généralisation abusive")
     st.caption("Passage abusif de cas particuliers à une règle générale.")
@@ -12188,36 +12631,6 @@ with row12_col1:
         markers = result.get("normative_qualification_markers", [])
         if not markers:
             st.info("Aucune qualification normative notable détectée.")
-        else:
-            for marker in markers:
-                st.warning(marker)
-
-with row13_col2:
-    st.markdown("### Confusion descriptif / normatif")
-    st.caption("Glissement d’une description vers une injonction sans justification suffisante.")
-
-    value = result["descriptive_normative_confusion_score"]
-
-    if value < 0.15:
-        label, color = "Faible", "#ca8a04"
-    elif value < 0.35:
-        label, color = "Modérée", "#f97316"
-    elif value < 0.60:
-        label, color = "Élevée", "#ea580c"
-    else:
-        label, color = "Très élevée", "#dc2626"
-
-    render_custom_gauge(value, color)
-    st.markdown(
-        f"<b style='color:{color}'>{label}</b> — {round(value*100,1)}%",
-        unsafe_allow_html=True
-    )
-    st.caption(result["descriptive_normative_confusion_interpretation"])
-
-    with st.expander("Voir les marqueurs", expanded=False):
-        markers = result.get("descriptive_normative_confusion_markers", [])
-        if not markers:
-            st.info("Aucune confusion descriptif / normatif notable détectée.")
         else:
             for marker in markers:
                 st.warning(marker)

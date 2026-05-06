@@ -8653,7 +8653,15 @@ with col_center:
     # Triangle cognitif
     # =============================
     st.subheader("Triangle cognitif G-N-D")
-    st.caption("Le texte est placé dans l’espace de la cognition : savoir articulé, compréhension intégrée, et certitude assertive.")
+    st.caption("Le triangle G–N–D positionne un texte selon trois forces :"
+    "savoir (G), compréhension (N) et certitude (D)."
+    
+    "L’équilibre entre ces dimensions révèle si le discours est ouvert, fragile ou cognitivement fermé."
+    
+    "👉 Si un texte sort du triangle, cela indique une structure incohérente ou instable :"
+    "une des dimensions dépasse les autres de manière disproportionnée,"
+    "rendant le discours difficilement interprétable ou épistémiquement non viable.")
+    
     fig_triangle = plot_cognitive_triangle_3d(result["G"], result["N"], result["D"])
     st.pyplot(fig_triangle, use_container_width=True)
 
@@ -13175,3 +13183,77 @@ for i, (name, low, high) in enumerate(stages):
             st.info(name)
 
 st.caption("Lorsque G et N augmentent sans inflation de D, la cognition gagne en revisabilité.")
+
+# =============================
+# Formulaire de feedback
+# =============================
+
+import os
+from datetime import datetime
+import pandas as pd
+
+st.divider()
+st.subheader("📩 Feedback")
+st.caption("Signalez un bug, proposez une amélioration ou laissez un commentaire sur DOXA Detector.")
+
+FEEDBACK_FILE = "feedback_doxa.csv"
+
+with st.form("feedback_form"):
+    feedback_type = st.selectbox(
+        "Type de retour",
+        ["Bug", "Suggestion", "Problème d'affichage", "Résultat incompris", "Autre"]
+    )
+
+    user_email = st.text_input(
+        "Votre email — facultatif",
+        placeholder="exemple@email.com"
+    )
+
+    message = st.text_area(
+        "Votre message",
+        placeholder="Décrivez le problème ou votre suggestion...",
+        height=160
+    )
+
+    submitted = st.form_submit_button("Envoyer le feedback")
+
+if submitted:
+    if not message.strip():
+        st.warning("Veuillez écrire un message avant d’envoyer.")
+    else:
+        new_feedback = {
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "type": feedback_type,
+            "email": user_email.strip(),
+            "message": message.strip()
+        }
+
+        if os.path.exists(FEEDBACK_FILE):
+            df = pd.read_csv(FEEDBACK_FILE)
+            df = pd.concat([df, pd.DataFrame([new_feedback])], ignore_index=True)
+        else:
+            df = pd.DataFrame([new_feedback])
+
+        df.to_csv(FEEDBACK_FILE, index=False)
+
+        st.success("Merci, votre feedback a bien été enregistré.")
+
+# =============================
+# Bloc admin (lecture feedbacks)
+# =============================
+
+st.divider()
+st.subheader("🔒 Admin — Feedbacks reçus")
+
+with st.expander("Afficher les feedbacks"):
+    admin_code = st.text_input("Code admin", type="password")
+
+    if admin_code == st.secrets.get("ADMIN_CODE", ""):
+        if os.path.exists("feedback_doxa.csv"):
+            import pandas as pd
+            df = pd.read_csv("feedback_doxa.csv")
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.info("Aucun feedback enregistré.")
+    elif admin_code:
+        st.error("Code incorrect.")

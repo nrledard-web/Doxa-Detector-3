@@ -723,7 +723,7 @@ def compute_linguistic_suspicion(text: str) -> dict:
         return sum(1 for term in terms if contains_term(t, term))
 
     rhetorical_pressure = count_hits(rhetorical_pressure_terms)
-    absolute_claims = count_hits(absolute_claim_terms)
+    absolute_claims = count_hits(STRONG_CERTAINTY_MARKERS)
     vague_authority = count_hits(vague_authority_terms)
     dramatic_framing = count_hits(dramatic_framing_terms)
     nuance_hits = count_hits(nuance_terms)
@@ -1028,17 +1028,30 @@ THREAT_AMPLIFICATION_MARKERS = [
     "crise majeure",
     "crise sociale majeure",
     "catastrophe",
+    "catastrophique",
     "effondrement",
+    "danger",
     "danger imminent",
     "grave menace",
+    "menace",
     "menace existentielle",
     "chaos",
     "désastre",
+    "désastreux",
+    "désastreuse",
+    "désastreuses",
+    "urgence",
     "urgence absolue",
+    "urgent",
     "avant qu'il ne soit trop tard",
+    "il sera trop tard",
     "si rien n'est fait",
+    "conséquences désastreuses",
+    "tout va empirer",
+    "irréversible",
 ]
 STRONG_CERTAINTY_MARKERS = [
+    # tes marqueurs (gardés)
     "il est absolument certain",
     "il ne fait aucun doute",
     "sans aucun doute",
@@ -1048,6 +1061,23 @@ STRONG_CERTAINTY_MARKERS = [
     "preuve irréfutable",
     "personne ne peut nier",
     "de toute évidence",
+
+    # AJOUTS CRITIQUES
+    "absolument certain",
+    "c'est certain",
+    "c'est évident",
+    "évident",
+    "indiscutable",
+    "indéniable",
+    "aucun doute",
+    "il est clair que",
+    "clairement",
+    "évidemment",
+    "forcément",
+    "inévitable",
+    "inévitablement",
+    "il est impossible que",
+    "cela ne peut pas être faux"
 ]
 def detect_political_patterns(text: str):
     """
@@ -1867,6 +1897,25 @@ def normalize_term(term: Optional[str]) -> Optional[str]:
 
     t = " ".join(normalized_words).strip()
     return t if t else None
+    from typing import Optional
+
+def normalize_text_for_markers(text: str) -> str:
+    if not text:
+        return ""
+
+    return (
+        text.lower()
+        .replace("’", "'")
+        .replace("‘", "'")
+        .replace("`", "'")
+        .replace("“", '"')
+        .replace("”", '"')
+        .replace("«", '"')
+        .replace("»", '"')
+        .replace("\u00a0", " ")
+    )
+
+
 
 # -----------------------------
 # Extraction sujet / prédicat
@@ -2382,6 +2431,21 @@ IMPLICIT_PREMISE_MARKERS = {
         "donc", "ainsi", "par conséquent", "dès lors",
         "cela prouve que", "cela montre que", "ce qui démontre que",
         "therefore", "this proves that", "this shows that"
+    ],
+    "injonction_conditionnelle": [
+        "si rien n'est fait",
+        "si rien n’est fait",
+        "si nous ne faisons rien",
+        "si personne n'agit",
+        "si aucune mesure n'est prise",
+        "si rien ne change",
+        "il faut agir",
+        "il faut réagir",
+        "il faut intervenir",
+        "nous devons agir",
+        "nous devons réagir",
+        "agir immédiatement",
+        "réagir immédiatement"
     ]
 }
 
@@ -2556,6 +2620,24 @@ def compute_discursive_coherence(text: str):
     shift_penalty = topic_shift_penalty(paragraphs)
 
     raw_score = logic_score + stability_score + length_score + paragraph_score - contradiction_penalty - shift_penalty
+
+    # -----------------------------
+    # Correction : cohérence structurelle vs orientation
+    # -----------------------------
+    sentence_count = max(len([s for s in re.split(r"[.!?]+", text) if s.strip()]), 1)
+    
+    if sentence_count > 3:
+        raw_score += 1.5
+    
+    if logic_hits > 1:
+        raw_score += 1.0
+    
+    if sentence_count > 3:
+        raw_score = max(raw_score, 7.5)
+
+    if contradiction_hits > 1:
+        raw_score -= 1.5
+    
     score = clamp(raw_score, 0.0, 20.0)
 
     return {
@@ -2572,18 +2654,32 @@ def compute_discursive_coherence(text: str):
 
 def compute_implicit_premises(text: str):
     if not text or not text.strip():
-        return {"score": 0.0, "details": {}, "markers": [], "interpretation": "Aucune prémisse implicite détectée."}
+        return {
+            "score": 0.0,
+            "details": {},
+            "markers": [],
+            "interpretation": "Aucune prémisse implicite détectée."
+        }
 
-    t = text.lower()
+    t = normalize_text_for_markers(text)
+
     score = 0
     details = {}
     markers = []
 
     for category, terms in IMPLICIT_PREMISE_MARKERS.items():
-        hits = [term for term in terms if contains_term(t, term)]
+        hits = [
+            term for term in terms
+            if contains_term(t, term)
+        ]
+
         details[category] = len(hits)
         markers.extend(hits)
-        score += len(hits)
+
+        if category == "injonction_conditionnelle":
+            score += len(hits) * 3
+        else:
+            score += len(hits)
 
     score = min(score * 2, 20)
     ratio = score / 20
@@ -2856,7 +2952,26 @@ CERTAINTY_TERMS = [
     "il est certain que",
     "personne ne peut nier",
     "il est incontestable",
-    "la preuve que"
+    "la preuve que",
+
+    # ajouts utiles
+    "il est absolument certain",
+    "absolument certain",
+    "aucun doute",
+    "c'est certain",
+    "c'est évident",
+    "évident",
+    "évidemment",
+    "indiscutable",
+    "incontestable",
+    "indéniable",
+    "de toute évidence",
+    "cela prouve que",
+    "preuve irréfutable",
+    "il ne fait aucun doute",
+    "nous allons vers",
+    "inévitablement",
+    "inévitable",
 ]
 
 EMOTIONAL_DICT = {
@@ -3376,30 +3491,64 @@ def compute_binary_opposition(text: str):
 # =========================================================
 # VICTIMISATION STRATÉGIQUE
 # =========================================================
+VICTIMIZATION_TERMS = [
+    "on nous empêche",
+    "on nous interdit",
+    "on nous censure",
+    "nous sommes censurés",
+    "censuré",
+    "censurée",
+    "censurés",
+    "discrédité",
+    "discréditée",
+    "discrédités",
+    "marginalisé",
+    "marginalisée",
+    "marginalisés",
+    "réduit au silence",
+    "faire taire",
+    "empêcher de dire",
+    "interdit de dire",
+    "vérité interdite",
+    "vérités interdites",
+    "dès que quelqu'un ose",
+    "ceux qui osent parler",
+    "les lanceurs d'alerte",
+    "persécuté",
+    "persécutés",
+    "stigmatisé",
+    "stigmatisés",
+]
+
 def compute_victimization(text: str):
     if not text or not text.strip():
         return {
             "score": 0.0,
             "markers": [],
-            "interpretation": "Aucune victimisation stratégique détectée."
+            "interpretation": "Aucune victimisation stratégique saillante détectée."
         }
 
-    text_lower = text.lower()
-    hits = [term for term in VICTIMIZATION_TERMS if contains_term(text_lower, term) or term in text_lower]
-    score = min(len(hits) * 0.30, 1.0)
+    t = normalize_text_for_markers(text)
+
+    hits = [
+        term for term in VICTIMIZATION_TERMS
+        if contains_term(t, term) or term in t
+    ]
+
+    score = min(len(hits) * 0.28, 1.0)
 
     if score < 0.15:
-        interpretation = "Peu de posture victimaire détectée."
+        interpretation = "Peu de victimisation stratégique détectée."
     elif score < 0.35:
-        interpretation = "Le texte suggère une posture de victimisation."
+        interpretation = "Le texte suggère une mise en scène légère de persécution."
     elif score < 0.60:
-        interpretation = "La victimisation structure partiellement le discours."
+        interpretation = "Le texte mobilise nettement une posture victimaire."
     else:
-        interpretation = "Le discours repose fortement sur une posture victimaire."
+        interpretation = "Le discours repose fortement sur une victimisation stratégique."
 
     return {
         "score": round(score, 3),
-        "markers": hits,
+        "markers": unique_keep_order(hits),
         "interpretation": interpretation,
     }
 
@@ -3414,8 +3563,64 @@ def compute_frame_shift(text: str):
             "interpretation": "Aucun déplacement du cadre argumentatif détecté."
         }
 
-    text_lower = text.lower()
-    hits = [term for term in FRAME_SHIFT_TERMS if contains_term(text_lower, term) or term in text_lower]
+    t = normalize_text_for_markers(text)
+
+    hits = [
+        term for term in FRAME_SHIFT_TERMS
+        if contains_term(t, term) or term in t
+    ]
+
+    # Marqueurs de transition / bascule
+    shift_connectors = [
+        "cependant",
+        "pourtant",
+        "malgré cela",
+        "mais",
+        "toutefois",
+        "néanmoins",
+        "en revanche",
+        "il n'empêche que"
+    ]
+
+    # Marqueurs de nuance
+    nuance_terms = [
+        "nuancer",
+        "prudence",
+        "prudent",
+        "prudente",
+        "restent prudents",
+        "reste prudent",
+        "certains économistes",
+        "certains experts",
+        "pourraient",
+        "semble",
+        "possible"
+    ]
+
+    # Marqueurs de bascule forte
+    certainty_or_threat_terms = [
+        "il est absolument certain",
+        "absolument certain",
+        "crise majeure",
+        "crise sociale majeure",
+        "si rien n'est fait",
+        "immédiatement",
+        "urgence",
+        "danger",
+        "catastrophe",
+        "effondrement"
+    ]
+
+    has_connector = any(term in t for term in shift_connectors)
+    has_nuance = any(term in t for term in nuance_terms)
+    has_certainty_or_threat = any(term in t for term in certainty_or_threat_terms)
+
+    if has_connector and has_nuance and has_certainty_or_threat:
+        hits.append("bascule nuance → certitude/menace")
+
+    elif has_nuance and has_certainty_or_threat:
+        hits.append("coexistence nuance prudente / conclusion forte")
+
     score = min(len(hits) * 0.35, 1.0)
 
     if score < 0.15:
@@ -3472,7 +3677,6 @@ def compute_argument_asymmetry(text: str):
         "interpretation": interpretation,
     }
 
-
 THREAT_AMPLIFICATION_TERMS = [
     "menace existentielle",
     "danger extrême",
@@ -3491,9 +3695,12 @@ THREAT_AMPLIFICATION_TERMS = [
 ]
 
 def compute_threat_amplification(text: str):
-    text_lower = text.lower()
+    text_lower = normalize_text_for_markers(text)
 
-    hits = [t for t in THREAT_AMPLIFICATION_TERMS if contains_term(text_lower, t)]
+    hits = [
+        marker for marker in THREAT_AMPLIFICATION_MARKERS
+        if contains_term(text_lower, marker)
+    ]
 
     score = min(len(hits) * 3 / 10, 1.0)
 
@@ -3604,8 +3811,6 @@ def compute_factual_overinterpretation(text: str):
         "markers": all_hits,
         "interpretation": interpretation,
     }
-
-
 # -----------------------------
 # 21) Dissonance interne
 # -----------------------------
@@ -3620,6 +3825,42 @@ INTERNAL_DISSONANCE_PATTERNS = [
     r"\bpossible\b.*\bimpossible\b",
 ]
 
+NUANCE_DISSONANCE_TERMS = [
+    "nuancer",
+    "reste prudent",
+    "restent prudents",
+    "prudence",
+    "certains économistes",
+    "certains experts",
+    "pourraient",
+    "pourrait",
+    "possible",
+    "semble",
+    "selon certains",
+]
+
+CERTAINTY_DISSONANCE_TERMS = [
+    "il est absolument certain",
+    "absolument certain",
+    "sans aucun doute",
+    "il est évident",
+    "c'est évident",
+    "indiscutable",
+    "incontestable",
+    "personne ne peut nier",
+]
+
+THREAT_DISSONANCE_TERMS = [
+    "crise majeure",
+    "crise sociale majeure",
+    "danger imminent",
+    "catastrophe",
+    "effondrement",
+    "désastre",
+    "si rien n'est fait",
+    "immédiatement",
+]
+
 def compute_internal_dissonance(text: str):
     if not text or not text.strip():
         return {
@@ -3628,14 +3869,30 @@ def compute_internal_dissonance(text: str):
             "interpretation": "Aucune dissonance interne saillante détectée."
         }
 
-    text_lower = text.lower()
+    t = normalize_text_for_markers(text)
     hits = []
 
     for pattern in INTERNAL_DISSONANCE_PATTERNS:
-        if re.search(pattern, text_lower, flags=re.DOTALL):
+        if re.search(pattern, t, flags=re.DOTALL):
             hits.append(pattern)
 
-    score = min(len(hits) * 3 / 10, 1.0)
+    has_nuance = any(term in t for term in NUANCE_DISSONANCE_TERMS)
+    has_certainty = any(term in t for term in CERTAINTY_DISSONANCE_TERMS)
+    has_threat = any(term in t for term in THREAT_DISSONANCE_TERMS)
+
+    if has_nuance and has_certainty:
+        hits.append("tension nuance / certitude absolue")
+
+    if has_nuance and has_threat:
+        hits.append("tension prudence / dramatisation de menace")
+
+    if "sans précédent" in t and ("comme" in t or "similaire" in t):
+        hits.append("tension sans précédent / comparaison historique")
+
+    if "urgence" in t and ("calme" in t or "calmement" in t):
+        hits.append("tension urgence / calme")
+
+    score = min(len(hits) * 0.30, 1.0)
 
     if score < 0.15:
         interpretation = "Peu de contradictions internes détectées."
@@ -3651,7 +3908,6 @@ def compute_internal_dissonance(text: str):
         "markers": hits,
         "interpretation": interpretation,
     }
-
 
 # -----------------------------
 # 22) Saturation normative
@@ -3764,48 +4020,6 @@ def compute_narrative_overdetermination(text: str):
         "markers": hits,
         "interpretation": interpretation,
     }
-
-# -----------------------------
-# Victimisation stratégique
-# -----------------------------
-VICTIMIZATION_TERMS = [
-    "on veut nous faire taire",
-    "nous sommes censurés",
-    "on nous empêche de parler",
-    "ils veulent nous réduire au silence",
-    "nous sommes persécutés",
-    "on nous attaque parce que nous disons la vérité",
-    "ils nous diabolisent",
-    "on nous calomnie",
-]
-
-def compute_victimization(text: str):
-    if not text or not text.strip():
-        return {
-            "score": 0.0,
-            "markers": [],
-            "interpretation": "Aucune victimisation stratégique saillante détectée."
-        }
-
-    text_lower = text.lower()
-    hits = [t for t in VICTIMIZATION_TERMS if contains_term(text_lower, t) or t in text_lower]
-    score = min(len(hits) * 0.28, 1.0)
-
-    if score < 0.15:
-        interpretation = "Peu de victimisation stratégique détectée."
-    elif score < 0.35:
-        interpretation = "Le texte suggère une mise en scène légère de persécution."
-    elif score < 0.60:
-        interpretation = "Le texte mobilise nettement une posture victimaire."
-    else:
-        interpretation = "Le discours repose fortement sur une victimisation stratégique."
-
-    return {
-        "score": round(score, 3),
-        "markers": hits,
-        "interpretation": interpretation,
-    }
-
 
 # -----------------------------
 # Polarisation morale
@@ -5155,7 +5369,6 @@ def compute_argument_asymmetry(text):
         "interpretation": "Le discours paraît unilatéral ou peu révisable." if score >= 0.4 else "Présence suffisante de nuances ou d'équilibre."
     }
 
-
 def compute_argument_density(text):
     words = re.findall(r"\b[\wÀ-ÿ'-]+\b", text.lower())
     word_count = max(len(words), 1)
@@ -5164,14 +5377,29 @@ def compute_argument_density(text):
     conclusion_markers = count_marker_occurrences(text, CONCLUSION_MARKERS)
     nuance_markers = count_marker_occurrences(text, NUANCE_MARKERS)
 
-    argumentative_units = reason_markers + conclusion_markers + nuance_markers
-    score = min((argumentative_units / word_count) * 35, 1)
+    # La nuance soutient l’argumentation, mais ne vaut pas une preuve.
+    argumentative_units = (
+        reason_markers
+        + conclusion_markers
+        + (nuance_markers * 0.35)
+    )
+
+    score = min((argumentative_units / word_count) * 22, 1)
+
+    if score < 0.15:
+        interpretation = "Le texte affirme davantage qu'il n'argumente."
+    elif score < 0.35:
+        interpretation = "Le texte contient une densité argumentative limitée."
+    elif score < 0.60:
+        interpretation = "Le texte présente une densité argumentative correcte."
+    else:
+        interpretation = "Le texte contient une forte densité argumentative."
 
     return {
         "score": round(score, 3),
         "label": label_level(score),
-        "units": argumentative_units,
-        "interpretation": "Le texte contient une vraie densité argumentative." if score >= 0.4 else "Le texte affirme davantage qu'il n'argumente."
+        "units": round(argumentative_units, 2),
+        "interpretation": interpretation
     }
 
 def compute_structural_diagnosis(
@@ -5254,15 +5482,27 @@ def compute_threat_amplification_advanced(text):
 
 
 def compute_strong_certainty(text):
-    sentences = max(len([s for s in re.split(r"[.!?]+", text) if s.strip()]), 1)
-    markers = count_marker_occurrences(text, STRONG_CERTAINTY_MARKERS)
+    t = normalize_text_for_markers(text)
 
-    score = min((markers / sentences) * 3.0, 1)
+    sentences = max(
+        len([s for s in re.split(r"[.!?]+", text) if s.strip()]),
+        1
+    )
+
+    found_markers = [
+        marker for marker in STRONG_CERTAINTY_MARKERS
+        if contains_term(t, marker)
+    ]
+
+    marker_count = len(found_markers)
+
+    score = min((marker_count / sentences) * 3.0, 1)
 
     return {
         "score": round(score, 3),
         "label": label_level(score),
-        "markers": markers,
+        "markers": found_markers,
+        "marker_count": marker_count,
         "interpretation": (
             "Le texte emploie une certitude forte ou verrouillante."
             if score >= 0.4
@@ -5952,6 +6192,7 @@ def analyze_article(text: str) -> Dict:
         "strong_certainty_score": strong_certainty_analysis["score"],
         "strong_certainty_label": strong_certainty_analysis["label"],
         "strong_certainty_interpretation": strong_certainty_analysis["interpretation"],
+        "strong_certainty_markers": strong_certainty_analysis["markers"],
 
         
 
@@ -6407,42 +6648,48 @@ def detect_discourse_type(result):
             "Le texte mobilise un registre religieux, spirituel ou doctrinal."
         )
 
-    # 3) Discours philosophique
-    if philosophical >= 2 and rhetorical_pressure < 0.5:
+    # 3) Discours journalistique interprétatif
+    if journalistic >= 2 and philosophical >= 1 and V >= 4:
+        return (
+            "Discours journalistique interprétatif",
+            "Le texte présente une forme informative tout en mobilisant des notions abstraites ou politiques pour orienter l’analyse."
+        )
+    
+    # 4) Discours philosophique
+    if philosophical >= 3 and journalistic < 2 and religious < 2 and rhetorical_pressure < 0.5:
         return (
             "Discours philosophique",
-            "Le texte mobilise des notions abstraites, conceptuelles ou réflexives."
+            "Le texte développe une réflexion conceptuelle ou abstraite sans dépendre principalement d’un cadre d’actualité."
         )
-
-    # 4) Discours journalistique
+    # 5) Discours journalistique
     if journalistic >= 2 and V >= 4:
         return (
             "Discours journalistique",
             "Le texte présente une forme informative avec attribution, rapport, enquête, étude ou référence médiatique."
         )
-
-    # 5) Discours polémique
+        
+    # 6) Discours polémique
     if rhetorical_pressure >= 0.4 or D >= 7:
         return (
             "Discours polémique",
             "Argumentation orientée, certitude élevée ou pression rhétorique notable."
         )
 
-    # 6) Discours factuel
+    # 7) Discours factuel
     if G >= 6 and V >= 6 and final_score >= 13:
         return (
             "Discours factuel",
             "Raisonnement appuyé sur des éléments vérifiables, des sources ou des faits identifiables."
         )
 
-    # 7) Ancien cas philosophique, gardé en secours
+    # 8) Ancien cas philosophique, gardé en secours
     if N >= 7 and G < 4 and V < 5 and rhetorical_pressure < 0.3:
         return (
             "Discours spéculatif / philosophique",
             "Réflexion conceptuelle cohérente, mais reposant surtout sur des idées générales plutôt que sur des éléments vérifiables."
         )
 
-    # 8) Discours analytique
+    # 9) Discours analytique
     if N >= 6 and rhetorical_pressure < 0.4:
         return (
             "Discours analytique",
@@ -6453,6 +6700,7 @@ def detect_discourse_type(result):
         "Discours indéterminé",
         "Le texte ne présente pas assez d’indices dominants pour être classé clairement."
     )
+
 
 # =====================================================
 # DÉTECTION PAGE WEB PARASITE
@@ -7050,8 +7298,6 @@ if mode == "Débat dynamique":
             )
 
     st.stop()
-
-
 # -----------------------------
 # Analyse principale
 # -----------------------------
@@ -7063,6 +7309,7 @@ if analyze_submitted:
     if len(semantic_words) < 3:
         st.session_state.last_result = None
         st.session_state.last_article = article
+        st.session_state["auto_scroll_to_analysis"] = False
 
         st.warning("⚠️ Analyse impossible")
         st.caption("Le texte est trop court pour permettre une analyse fiable.")
@@ -7075,7 +7322,7 @@ if analyze_submitted:
             "Veuillez saisir une affirmation plus développée."
         )
         st.stop()
-
+        
     # =====================================================
     # Vérification : page web parasite
     # =====================================================
@@ -7111,8 +7358,29 @@ article_for_analysis = st.session_state.last_article
 if not result:
     st.stop()
 
-if result:
+import streamlit.components.v1 as components
 
+if st.session_state.get("auto_scroll_to_analysis", False):
+    components.html(
+        """
+        <script>
+        setTimeout(() => {
+            const target = window.parent.document.getElementById("scroll-analyse-target");
+            if (target) {
+                target.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                });
+            }
+        }, 800);
+        </script>
+        """,
+        height=0
+    )
+
+    st.session_state["auto_scroll_to_analysis"] = False
+
+if result:
 # =====================================================
 # AIDE DE LECTURE DES JAUGES
 # =====================================================
@@ -7257,9 +7525,11 @@ Résumé
 # AFFICHAGE
 # =====================================================
     
-    if result:
-        show_gauge_help()
-        show_word_lists_help()
+result = st.session_state.get("last_result")
+
+if not result:
+    st.info("Aucune analyse disponible.")
+    st.stop()
 
 st.markdown("""
 <div style="text-align:center; margin:25px 0; color:#888;">
@@ -7433,18 +7703,24 @@ st.markdown("""
 ────────── ✦ ──────────
 </div>
 """, unsafe_allow_html=True)
-    
+
+st.markdown(
+    """
+    <div id="scroll-analyse-target"></div>
+    """,
+    unsafe_allow_html=True
+)
+
 disc_type, disc_explanation = detect_discourse_type(result)
 
 st.markdown("### Type de discours détecté")
 st.info(f"**{disc_type}** — {disc_explanation}")
-    
+
 st.markdown("""
 <div style="text-align:center; margin:25px 0; color:#888;">
 ────────── ✦ ──────────
 </div>
 """, unsafe_allow_html=True)
-
 
 # =============================
 # Barre de raisonnement

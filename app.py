@@ -9683,6 +9683,10 @@ if not st.session_state.get("direct_search_result_mode"):
         st.session_state["debate_text_input"] = ""
         st.session_state["clear_debate_text_next_run"] = False
 
+    if st.session_state.get("clear_article_next_run"):
+        st.session_state["article"] = ""
+        st.session_state["clear_article_next_run"] = False
+
 
 # =====================================================
 # FORMULAIRE PRINCIPAL
@@ -9718,6 +9722,22 @@ if not st.session_state.get("direct_search_result_mode"):
             T["analyze"],
             use_container_width=True
         )
+
+if not st.session_state.get("direct_search_result_mode") and mode == "Analyse simple":
+
+    if st.button("🔄 Rafraîchir le texte", use_container_width=True):
+
+        st.session_state["clear_article_next_run"] = True
+        st.session_state["last_result"] = None
+        st.session_state["last_article"] = ""
+        st.session_state["analysis_done"] = False
+        st.session_state["article_source"] = "paste"
+
+        for key in ["loaded_url", "loaded_article_title"]:
+            if key in st.session_state:
+                del st.session_state[key]
+
+        st.rerun()
 
 
 # =====================================================
@@ -12031,13 +12051,13 @@ with pd3:
     value = result.get("reported_speech_score", 0)
 
     if value < 0.15:
-        label, color = "Faible", "#16a34a"
+        label, color = "Faible", "#ca8a04"
     elif value < 0.35:
-        label, color = "Présent", "#ca8a04"
+        label, color = "Présent", "#84cc16"
     elif value < 0.60:
-        label, color = "Élevé", "#f97316"
+        label, color = "Élevé", "#16a34a"
     else:
-        label, color = "Très élevé", "#dc2626"
+        label, color = "Très élevé", "#15803d"
 
     render_custom_gauge(value, color)
 
@@ -12055,6 +12075,75 @@ with pd3:
         else:
             for marker in markers:
                 st.warning(marker)
+
+    with st.popover("ℹ️ Comprendre cette jauge"):
+    
+        st.markdown("#### Discours rapporté / citations")
+    
+        st.write(
+            "Cette jauge détecte si le texte rapporte des propos "
+            "extérieurs plutôt que d’affirmer directement une thèse."
+        )
+    
+        st.write(
+            "Elle repère notamment :"
+        )
+    
+        st.markdown("""
+    - les citations entre guillemets ;
+    - les verbes de parole : déclare, affirme, estime, explique ;
+    - les marqueurs d’attribution : selon, d’après, pour.
+    """)
+    
+        st.markdown("#### Formule utilisée")
+    
+        st.code(
+            """quote_ratio = mots_dans_citations / mots_totaux
+    marker_ratio = nombre_marqueurs / 10
+    
+    score = min(
+        (quote_ratio * 1.8) +
+        (marker_ratio * 0.5),
+        1.0
+    )""",
+            language="python"
+        )
+    
+        st.markdown("#### Valeur actuelle")
+    
+        st.write(f"Score : {round(score * 100, 1)}%")
+        st.write(f"Niveau : {label}")
+    
+        markers = result.get("reported_speech_markers", [])
+    
+        st.write(f"Marqueurs détectés : {len(markers)}")
+    
+        st.markdown("#### Interprétation actuelle")
+    
+        st.write(
+            result.get(
+                "reported_speech_interpretation",
+                "Aucune interprétation disponible."
+            )
+        )
+    
+        st.markdown("#### Lecture")
+    
+        st.markdown("""
+    🟢 Faible : discours principalement assumé directement  
+    🟡 Présent : citations ou attributions ponctuelles  
+    🟠 Élevé : forte présence de discours rapporté  
+    🔴 Très élevé : texte majoritairement composé de citations ou positions externes
+    """)
+    
+        st.markdown("#### Attention")
+    
+        st.write(
+            "Un score élevé ne signifie pas manipulation ou mensonge. "
+            "Cette jauge sert aussi de modérateur afin d’éviter de "
+            "surpénaliser les textes journalistiques ou analytiques "
+            "rapportant des propos extérieurs."
+        )
     
     
 with pd4:

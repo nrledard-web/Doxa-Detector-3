@@ -167,15 +167,90 @@ st.image("banner2.png", use_container_width=True)
 st.caption("Laboratoire de calibration cognitive — M = (G + N) − D")
 st.markdown("---")
 
+st.markdown("""
+<style>
+/* Force une base lisible, même si le téléphone est en mode sombre */
+html, body, [data-testid="stAppViewContainer"], .stApp {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+}
+
+/* Texte général */
+p, span, div, label, textarea, input {
+    color: #111827 !important;
+}
+
+/* Zones Streamlit */
+[data-testid="stMarkdownContainer"],
+[data-testid="stText"],
+[data-testid="stCaptionContainer"],
+[data-testid="stExpander"],
+[data-testid="stForm"] {
+    color: #111827 !important;
+}
+
+/* Champs de saisie */
+textarea, input {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border-color: #cbd5e1 !important;
+}
+
+/* Boutons */
+button {
+    color: #111827 !important;
+}
+
+/* Cartes / containers */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+}
+
+/* Code blocks */
+code, pre {
+    background-color: #f8fafc !important;
+    color: #111827 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # =============================
 # STYLE GLOBAL DOXA DETECTOR (mobile friendly)
 # =============================
 st.markdown("""
 <style>
 
+/* =========================
+   Compatibilité mobile / dark mode
+   ========================= */
+
+html, body, [data-testid="stAppViewContainer"], .stApp {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+}
+
 /* Fond général */
 .stApp {
-    background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    background: linear-gradient(
+        180deg,
+        #f8fafc 0%,
+        #eef2f7 100%
+    ) !important;
+
+    color: #111827 !important;
+}
+
+/* Force le texte lisible partout */
+.stApp,
+.stApp * {
+    color: #111827 !important;
+}
+
+/* Exceptions : garde les couleurs des jauges */
+.stApp span[style*="color"],
+.stApp b[style*="color"] {
+    color: inherit !important;
 }
 
 /* Container principal */
@@ -194,7 +269,7 @@ h1, h2, h3 {
     border-radius: 16px !important;
     border: 1px solid #e2e8f0 !important;
     box-shadow: 0 6px 16px rgba(0,0,0,0.05);
-    background: rgba(255,255,255,0.92);
+    background: rgba(255,255,255,0.92) !important;
 }
 
 /* Boutons */
@@ -204,6 +279,7 @@ h1, h2, h3 {
     font-weight: 600 !important;
     border: 1px solid #cbd5e1 !important;
     transition: all 0.2s ease;
+    color: #111827 !important;
 }
 
 /* Hover boutons */
@@ -213,8 +289,20 @@ h1, h2, h3 {
 }
 
 /* Inputs */
-textarea, input {
+textarea,
+input {
     border-radius: 12px !important;
+    background-color: #ffffff !important;
+    color: #111827 !important;
+    border-color: #cbd5e1 !important;
+}
+
+/* Labels */
+label,
+p,
+span,
+div {
+    color: #111827 !important;
 }
 
 /* Progress bars */
@@ -225,7 +313,7 @@ div[data-testid="stProgressBar"] > div > div > div > div {
 
 /* Metrics */
 [data-testid="stMetric"] {
-    background: white;
+    background: white !important;
     border-radius: 14px;
     padding: 12px;
     border: 1px solid #e2e8f0;
@@ -238,7 +326,14 @@ div[data-testid="stProgressBar"] > div > div > div > div {
 
 /* Caption */
 [data-testid="stCaptionContainer"] {
-    color: #475569;
+    color: #475569 !important;
+}
+
+/* Code blocks */
+code,
+pre {
+    background-color: #f8fafc !important;
+    color: #111827 !important;
 }
 
 /* Smartphone */
@@ -250,9 +345,17 @@ div[data-testid="stProgressBar"] > div > div > div > div {
         padding-right: 0.6rem;
     }
 
-    h1 {font-size: 1.5rem;}
-    h2 {font-size: 1.3rem;}
-    h3 {font-size: 1.1rem;}
+    h1 {
+        font-size: 1.5rem;
+    }
+
+    h2 {
+        font-size: 1.3rem;
+    }
+
+    h3 {
+        font-size: 1.1rem;
+    }
 
     [data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px !important;
@@ -263,7 +366,6 @@ div[data-testid="stProgressBar"] > div > div > div > div {
         width: 100%;
         padding: 0.6rem;
     }
-
 }
 
 </style>
@@ -9485,20 +9587,6 @@ if (
     st.markdown("### 📰 Texte chargé")
     st.success("Le texte est prêt à être analysé.")
 
-    with st.expander("Voir le texte chargé", expanded=True):
-        st.text_area(
-            "Texte extrait",
-            value=st.session_state.get("article", ""),
-            height=260,
-            disabled=True,
-            key="page_article_preview"
-        )
-
-    if st.button("🔎 Analyser ce texte maintenant", use_container_width=True):
-        st.session_state.last_result = analyze_article(st.session_state.article)
-        st.session_state.last_article = st.session_state.article
-        st.session_state.article_loaded_from_search = False
-        st.rerun()
 
 # =============================
 # Mode résultat direct depuis recherche
@@ -9552,9 +9640,24 @@ if "pending_editor_version" not in st.session_state:
 # SÉLECTEUR PARTICIPANT AVANT MICRO
 # =====================================================
 if not st.session_state.get("direct_search_result_mode") and mode == "Débat dynamique":
+
+    participant_count = st.selectbox(
+        "Nombre de participants",
+        [2, 3, 4, 5, 6],
+        index=0,
+        key="debate_participant_count"
+    )
+
+    debate_participants = [
+        f"Participant {chr(65 + i)}"
+        for i in range(participant_count)
+    ]
+
+    st.session_state["debate_participants"] = debate_participants
+
     st.session_state["debate_speaker_choice"] = st.radio(
         "Participant pour la prochaine intervention",
-        ["Participant A", "Participant B"],
+        debate_participants,
         horizontal=True,
         key="debate_speaker_radio"
     )
